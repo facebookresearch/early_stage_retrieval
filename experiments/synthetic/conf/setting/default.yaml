@@ -1,0 +1,17 @@
+setting: default
+data_size: 1000000
+n_action: 1000
+n_output_action: 10
+n_candidate_action_logging: 100
+n_candidate_action_train: 100
+n_candidate_action_eval: 100
+n_user: 1000
+n_latent: 10
+dim_context: 10
+dim_action_emb: 10
+reward_scaler: 10.0
+logging_type: uniform
+device: cpu
+n_random_seed: 5
+start_random_seed: 0
+base_random_seed: 12345
