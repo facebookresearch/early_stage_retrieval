@@ -1,0 +1,53 @@
+setting:
+  setting: default
+  data_size: 1000000
+  n_action: 1000
+  n_output_action: 10
+  n_candidate_action_logging: 100
+  n_candidate_action_eval: 100
+  n_user: 1000
+  n_latent: 10
+  dim_context: 10
+  dim_action_emb: 10
+  reward_scaler: 10.0
+  logging_type: uniform
+  device: cpu
+  n_random_seed: 1
+  start_random_seed: 4
+  base_random_seed: 12345
+model:
+  dim_model_emb: 10
+  n_moe_model: 5
+  early_stage_logging_lr: 0.01
+  late_stage_logging_lr: 0.1
+  early_stage_naive_cf_lr: 0.05
+  early_stage_moe_cf_lr: 0.05
+  early_stage_moe_selector_lr: 0.05
+  quantile_cf_lr: 0.01
+  late_stage_neural_lr: 0.1
+  kernel_opl_lr: 0.01
+  n_epoch: 10
+  n_epoch_logging: 10000
+  n_steps_per_epoch: 10
+  n_epochs_per_log: 5
+logs:
+  bucket: logs_bucket
+  rootdir: logs_rootdir
+  manifold_rootdir: tree/early_stage_retrieval
+  experiment_name: auto
+  use_manifold: true
+path:
+  early_stage_logging_path: auto
+  late_stage_logging_path: auto
+  early_stage_naive_cf_path: auto
+  late_stage_naive_cf_path: auto
+  early_stage_moe_cf_path: auto
+  early_stage_moe_model_selector_path: auto
+  early_stage_quantile_cf_path: auto
+  manifold_early_stage_logging_path: auto
+  manifold_late_stage_logging_path: auto
+  manifold_early_stage_naive_cf_path: auto
+  manifold_late_stage_naive_cf_path: auto
+  manifold_early_stage_moe_cf_path: auto
+  manifold_early_stage_moe_model_selector_path: auto
+  manifold_early_stage_quantile_cf_path: auto

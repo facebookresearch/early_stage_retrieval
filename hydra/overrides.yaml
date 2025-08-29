@@ -1,0 +1,8 @@
+- logs.bucket=logs_bucket
+- logs.rootdir=logs_rootdir
+- logs.manifold_rootdir=tree/early_stage_retrieval
+- logs.use_manifold=True
+- setting.start_random_seed=4
+- model.n_epoch=10
+- model.n_epochs_per_log=5
+- setting.n_random_seed=1
