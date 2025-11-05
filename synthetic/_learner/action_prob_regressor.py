@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
-from early_stage_retrieval.synthetic.dataset import (
+from synthetic.dataset import (
     LoggedDataset,
 )
-from early_stage_retrieval.synthetic.policy.base import (
+from synthetic.policy.base import (
     BaseEarlyStagePolicy,
     BaseJointPolicy,
     BaseLateStagePolicy,

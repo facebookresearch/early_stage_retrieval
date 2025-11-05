@@ -11,34 +11,19 @@ import pandas as pd
 
 import torch
 
-from early_stage_retrieval.experiments.synthetic.function import (
+from experiments.synthetic._function import (
     evaluate_policy,
     initialize_optimal_policy,
     load_pg_policy,
     setup_data_generation_process,
 )
-from early_stage_retrieval.experiments.synthetic.utils import (
+from experiments.synthetic._utils import (
     assert_configuration,
     defaultdict_to_dict,
     format_runtime,
     reset_seed,
 )
-from manifold.clients.python import ManifoldClient
 from omegaconf import DictConfig
-
-# from .function import (
-#     collect_logged_dataset,
-#     evaluate_policy,
-#     initialize_optimal_policy,
-#     initialize_uniform_policy,
-#     load_greedy_algorithm,
-#     load_moe_cf_policy,
-#     load_moe_model_selector,
-#     load_naive_cf_policy,
-#     optimize_moe_model_assignment,
-#     setup_data_generation_process,
-# )
-# from .utils import assert_configuration, defaultdict_to_dict, format_runtime, reset_seed
 
 
 def _process(
@@ -146,10 +131,7 @@ def process(
     experiment_name = conf["experiment_name"]
     logging_type = conf["logging_type"]
 
-    bucket = conf["bucket"]
     rootdir = conf["rootdir"]
-    manifold_rootdir = conf["manifold_rootdir"]
-    use_manifold = conf["use_manifold"]
 
     if (
         setting != "n_candidate_action_eval"
@@ -171,7 +153,6 @@ def process(
             conf_["random_seed"] = random_seed + conf["start_random_seed"]
 
             rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-            manifold_rootdir_ = f"{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
 
             if conf["early_stage_is_credit_assigned_pg_path"] == "auto":
                 conf_["early_stage_is_credit_assigned_pg_path"] = (
@@ -182,44 +163,6 @@ def process(
                 conf_["early_stage_kernel_is_credit_assigned_pg_path"] = (
                     f"{rootdir_}/kernelIS/early_stage_policy.pt"
                 )
-
-            if conf["manifold_early_stage_is_credit_assigned_pg_path"] == "auto":
-                conf_["manifold_early_stage_is_credit_assigned_pg_path"] = (
-                    f"{manifold_rootdir_}/IS/early_stage_policy.pt"
-                )
-
-            if conf["manifold_early_stage_kernel_is_credit_assigned_pg_path"] == "auto":
-                conf_["manifold_early_stage_kernel_is_credit_assigned_pg_path"] = (
-                    f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
-                )
-
-            if use_manifold:
-                with ManifoldClient.get_client(bucket=bucket) as client:
-                    if not client.sync_exists(
-                        conf_["manifold_early_stage_is_credit_assigned_pg_path"]
-                    ):
-                        raise ValueError(
-                            "manifold_early_stage_is_credit_assigned_pg_path does not exist."
-                        )
-                    else:
-                        client.sync_get(
-                            conf_["manifold_early_stage_is_credit_assigned_pg_path"],
-                            conf_["early_stage_is_credit_assigned_pg_path"],
-                        )
-
-                    if not client.sync_exists(
-                        conf_["manifold_early_stage_kernel_is_credit_assigned_pg_path"]
-                    ):
-                        raise ValueError(
-                            "manifold_early_stage_kernel_is_credit_assigned_pg_path does not exist."
-                        )
-                    else:
-                        client.sync_get(
-                            conf_[
-                                "manifold_early_stage_kernel_is_credit_assigned_pg_path"
-                            ],
-                            conf_["early_stage_kernel_is_credit_assigned_pg_path"],
-                        )
 
             if not Path(conf_["early_stage_is_credit_assigned_pg_path"]).exists():
                 raise ValueError(
@@ -234,7 +177,6 @@ def process(
                 )
 
             rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-            manifold_rootdir_ = f"{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
 
             if conf["early_stage_is_vanilla_pg_path"] == "auto":
                 conf_["early_stage_is_vanilla_pg_path"] = (
@@ -245,42 +187,6 @@ def process(
                 conf_["early_stage_kernel_is_vanilla_pg_path"] = (
                     f"{rootdir_}/kernelIS/early_stage_policy.pt"
                 )
-
-            if conf["manifold_early_stage_is_vanilla_pg_path"] == "auto":
-                conf_["manifold_early_stage_is_vanilla_pg_path"] = (
-                    f"{manifold_rootdir_}/IS/early_stage_policy.pt"
-                )
-
-            if conf["manifold_early_stage_kernel_is_vanilla_pg_path"] == "auto":
-                conf_["manifold_early_stage_kernel_is_vanilla_pg_path"] = (
-                    f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
-                )
-
-            if use_manifold:
-                with ManifoldClient.get_client(bucket=bucket) as client:
-                    if not client.sync_exists(
-                        conf_["manifold_early_stage_is_vanilla_pg_path"]
-                    ):
-                        raise ValueError(
-                            "manifold_early_stage_is_vanilla_pg_path does not exist."
-                        )
-                    else:
-                        client.sync_get(
-                            conf_["manifold_early_stage_is_vanilla_pg_path"],
-                            conf_["early_stage_is_vanilla_pg_path"],
-                        )
-
-                    if not client.sync_exists(
-                        conf_["manifold_early_stage_kernel_is_vanilla_pg_path"]
-                    ):
-                        raise ValueError(
-                            "manifold_early_stage_kernel_is_vanilla_pg_path does not exist."
-                        )
-                    else:
-                        client.sync_get(
-                            conf_["manifold_early_stage_kernel_is_vanilla_pg_path"],
-                            conf_["early_stage_kernel_is_vanilla_pg_path"],
-                        )
 
             if not Path(conf_["early_stage_is_vanilla_pg_path"]).exists():
                 raise ValueError("early_stage_is_vanilla_pg_path does not exist.")
@@ -305,7 +211,6 @@ def process(
                 conf_["random_seed"] = random_seed + conf["start_random_seed"]
 
                 rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-                manifold_rootdir_ = f"{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
 
                 if conf["early_stage_is_credit_assigned_pg_path"] == "auto":
                     conf_["early_stage_is_credit_assigned_pg_path"] = (
@@ -316,51 +221,6 @@ def process(
                     conf_["early_stage_kernel_is_credit_assigned_pg_path"] = (
                         f"{rootdir_}/kernelIS/early_stage_policy.pt"
                     )
-
-                if conf["manifold_early_stage_is_credit_assigned_pg_path"] == "auto":
-                    conf_["manifold_early_stage_is_credit_assigned_pg_path"] = (
-                        f"{manifold_rootdir_}/IS/early_stage_policy.pt"
-                    )
-
-                if (
-                    conf["manifold_early_stage_kernel_is_credit_assigned_pg_path"]
-                    == "auto"
-                ):
-                    conf_["manifold_early_stage_kernel_is_credit_assigned_pg_path"] = (
-                        f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
-                    )
-
-                if use_manifold:
-                    with ManifoldClient.get_client(bucket=bucket) as client:
-                        if not client.sync_exists(
-                            conf_["manifold_early_stage_is_credit_assigned_pg_path"]
-                        ):
-                            raise ValueError(
-                                "manifold_early_stage_is_credit_assigned_pg_path does not exist."
-                            )
-                        else:
-                            client.sync_get(
-                                conf_[
-                                    "manifold_early_stage_is_credit_assigned_pg_path"
-                                ],
-                                conf_["early_stage_is_credit_assigned_pg_path"],
-                            )
-
-                        if not client.sync_exists(
-                            conf_[
-                                "manifold_early_stage_kernel_is_credit_assigned_pg_path"
-                            ]
-                        ):
-                            raise ValueError(
-                                "manifold_early_stage_kernel_is_credit_assigned_pg_path does not exist."
-                            )
-                        else:
-                            client.sync_get(
-                                conf_[
-                                    "manifold_early_stage_kernel_is_credit_assigned_pg_path"
-                                ],
-                                conf_["early_stage_kernel_is_credit_assigned_pg_path"],
-                            )
 
                 if not Path(conf_["early_stage_is_credit_assigned_pg_path"]).exists():
                     raise ValueError(
@@ -375,7 +235,6 @@ def process(
                     )
 
                 rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-                manifold_rootdir_ = f"{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
 
                 if conf["early_stage_is_vanilla_pg_path"] == "auto":
                     conf_["early_stage_is_vanilla_pg_path"] = (
@@ -386,42 +245,6 @@ def process(
                     conf_["early_stage_kernel_is_vanilla_pg_path"] = (
                         f"{rootdir_}/kernelIS/early_stage_policy.pt"
                     )
-
-                if conf["manifold_early_stage_is_vanilla_pg_path"] == "auto":
-                    conf_["manifold_early_stage_is_vanilla_pg_path"] = (
-                        f"{manifold_rootdir_}/IS/early_stage_policy.pt"
-                    )
-
-                if conf["manifold_early_stage_kernel_is_vanilla_pg_path"] == "auto":
-                    conf_["manifold_early_stage_kernel_is_vanilla_pg_path"] = (
-                        f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
-                    )
-
-                if use_manifold:
-                    with ManifoldClient.get_client(bucket=bucket) as client:
-                        if not client.sync_exists(
-                            conf_["manifold_early_stage_is_vanilla_pg_path"]
-                        ):
-                            raise ValueError(
-                                "manifold_early_stage_is_vanilla_pg_path does not exist."
-                            )
-                        else:
-                            client.sync_get(
-                                conf_["manifold_early_stage_is_vanilla_pg_path"],
-                                conf_["early_stage_is_vanilla_pg_path"],
-                            )
-
-                        if not client.sync_exists(
-                            conf_["manifold_early_stage_kernel_is_vanilla_pg_path"]
-                        ):
-                            raise ValueError(
-                                "manifold_early_stage_kernel_is_vanilla_pg_path does not exist."
-                            )
-                        else:
-                            client.sync_get(
-                                conf_["manifold_early_stage_kernel_is_vanilla_pg_path"],
-                                conf_["early_stage_kernel_is_vanilla_pg_path"],
-                            )
 
                 if not Path(conf_["early_stage_is_vanilla_pg_path"]).exists():
                     raise ValueError("early_stage_is_vanilla_pg_path does not exist.")
@@ -459,19 +282,6 @@ def process(
                         f"{rootdir_}/IS/early_stage_policy.pt"
                     )
 
-                if conf["manifold_early_stage_is_credit_assigned_pg_path"] == "auto":
-                    conf_["manifold_early_stage_is_credit_assigned_pg_path"] = (
-                        f"{manifold_rootdir_}/IS/early_stage_policy.pt"
-                    )
-
-                if (
-                    conf["manifold_early_stage_kernel_is_credit_assigned_pg_path"]
-                    == "auto"
-                ):
-                    conf_["manifold_early_stage_kernel_is_credit_assigned_pg_path"] = (
-                        f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
-                    )
-
                 if setting != "n_candidate_action_eval":
                     rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},param={key_param},logging={logging_type},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
                 else:
@@ -485,11 +295,6 @@ def process(
                 if conf["early_stage_kernel_is_vanilla_pg_path"] == "auto":
                     conf_["early_stage_kernel_is_vanilla_pg_path"] = (
                         f"{rootdir_}/kernelIS/early_stage_policy.pt"
-                    )
-
-                if conf["manifold_early_stage_kernel_is_vanilla_pg_path"] == "auto":
-                    conf_["manifold_early_stage_kernel_is_vanilla_pg_path"] = (
-                        f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
                     )
 
                 print(
@@ -519,16 +324,6 @@ def process(
                     f"{rootdir_}/kernelIS/early_stage_policy.pt"
                 )
 
-            if conf["manifold_early_stage_is_credit_assigned_pg_path"] == "auto":
-                conf_["manifold_early_stage_is_credit_assigned_pg_path"] = (
-                    f"{manifold_rootdir_}/IS/early_stage_policy.pt"
-                )
-
-            if conf["manifold_early_stage_kernel_is_credit_assigned_pg_path"] == "auto":
-                conf_["manifold_early_stage_kernel_is_credit_assigned_pg_path"] = (
-                    f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
-                )
-
             rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
 
             if conf["early_stage_is_vanilla_pg_path"] == "auto":
@@ -539,16 +334,6 @@ def process(
             if conf["early_stage_kernel_is_vanilla_pg_path"] == "auto":
                 conf_["early_stage_kernel_is_vanilla_pg_path"] = (
                     f"{rootdir_}/kernelIS/early_stage_policy.pt"
-                )
-
-            if conf["manifold_early_stage_is_vanilla_pg_path"] == "auto":
-                conf_["manifold_early_stage_is_vanilla_pg_path"] = (
-                    f"{manifold_rootdir_}/IS/early_stage_policy.pt"
-                )
-
-            if conf["manifold_early_stage_kernel_is_vanilla_pg_path"] == "auto":
-                conf_["manifold_early_stage_kernel_is_vanilla_pg_path"] = (
-                    f"{manifold_rootdir_}/kernelIS/early_stage_policy.pt"
                 )
 
             print(
@@ -568,18 +353,6 @@ def process(
     Path(f"{rootdir}/{experiment_name}").mkdir(parents=True, exist_ok=True)
     df_path = f"{rootdir}/{experiment_name}/offline_pg_performance_{logging_type}.csv"
     df.to_csv(df_path, index=False)
-
-    if use_manifold:
-        with ManifoldClient.get_client(bucket=bucket) as client:
-            if not client.sync_exists(manifold_rootdir):
-                client.sync_mkdir(manifold_rootdir, recursive=True)
-
-            manifold_df_path = f"{manifold_rootdir}/{experiment_name}/offline_pg_performance_{logging_type}.csv"
-            client.sync_put(
-                manifold_df_path,
-                df_path,
-                predicate=ManifoldClient.Predicates.AllowOverwrite,
-            )
 
 
 @hydra.main(config_path="conf/", config_name="config")
@@ -632,11 +405,8 @@ def main(cfg: DictConfig) -> None:
         "n_epoch_logging": cfg.model.n_epoch_logging,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
-        "bucket": cfg.logs.bucket,
         "rootdir": cfg.logs.rootdir,
-        "manifold_rootdir": cfg.logs.manifold_rootdir,
         "experiment_name": cfg.logs.experiment_name,
-        "use_manifold": cfg.logs.use_manifold,
         "early_stage_logging_path": cfg.path.early_stage_logging_path,
         "late_stage_logging_path": cfg.path.late_stage_logging_path,
         "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,
@@ -652,21 +422,6 @@ def main(cfg: DictConfig) -> None:
         "early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
         "logging_action_prob_model_path": cfg.path.logging_action_prob_model_path,
         "logging_marginal_model_path": cfg.path.logging_marginal_model_path,
-        "manifold_early_stage_logging_path": cfg.path.manifold_early_stage_logging_path,
-        "manifold_late_stage_logging_path": cfg.path.manifold_late_stage_logging_path,
-        "manifold_early_stage_naive_cf_path": cfg.path.manifold_early_stage_naive_cf_path,
-        "manifold_late_stage_naive_cf_path": cfg.path.manifold_late_stage_naive_cf_path,
-        "manifold_early_stage_moe_cf_path": cfg.path.manifold_early_stage_moe_cf_path,
-        "manifold_early_stage_moe_model_selector_path": cfg.path.manifold_early_stage_moe_model_selector_path,
-        "manifold_early_stage_quantile_cf_path": cfg.path.manifold_early_stage_quantile_cf_path,
-        "manifold_early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
-        "manifold_early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
-        "manifold_early_stage_is_credit_assigned_pg_path": cfg.path.early_stage_is_credit_assigned_pg_path,
-        "manifold_early_stage_is_vanilla_pg_path": cfg.path.early_stage_is_vanilla_pg_path,
-        "manifold_early_stage_kernel_is_credit_assigned_pg_path": cfg.path.early_stage_kernel_is_credit_assigned_pg_path,
-        "manifold_early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
-        "manifold_logging_action_prob_model_path": cfg.path.manifold_logging_action_prob_model_path,
-        "manifold_logging_marginal_model_path": cfg.path.manifold_logging_marginal_model_path,
     }
     process(conf)
 

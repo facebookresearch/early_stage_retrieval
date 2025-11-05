@@ -1,4 +1,4 @@
-"""Fit logging marginal density model of the Kernel IS."""
+"""Train the policy via OPL (vanilla IS)."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -9,34 +9,23 @@ import hydra
 
 import torch
 
-from early_stage_retrieval.experiments.synthetic.function import (
+from experiments.synthetic._function import (
     collect_logged_dataset,
-    initialize_trainable_marginal_model,
+    initialize_trainable_policy,
     initialize_uniform_policy,
     load_late_stage_cf_policy,
+    load_logging_action_prob_model,
     load_logging_policy,
     save_logs,
     setup_data_generation_process,
-    train_logging_marginal_model,
+    train_is_pg_policy,
 )
-from early_stage_retrieval.experiments.synthetic.utils import (
+from experiments.synthetic._utils import (
     assert_configuration,
     format_runtime,
     reset_seed,
 )
-from manifold.clients.python import ManifoldClient
 from omegaconf import DictConfig
-
-# from .function import (
-#    collect_logged_dataset,
-#    initialize_trainable_policy,
-#    initialize_uniform_policy,
-#    load_logging_policy,
-#    save_logs,
-#    setup_data_generation_process,
-#    train_is_pg_policy,
-# )
-# from .utils import assert_configuration, format_runtime, reset_seed
 
 
 def _process(
@@ -51,15 +40,15 @@ def _process(
     reward_scaler: Union[int, float],
     data_size: int,
     dim_model_emb: int,
-    logging_marginal_model_lr: Union[int, float],
-    n_epoch_regression: int,
+    is_vanilla_pg_lr: Union[int, float],
+    is_credit_assigned_pg_lr: Union[int, float],
+    credit_assignment_type: str,
+    n_epoch_logging: int,
     n_epochs_per_log: int,
     n_candidate_action_logging: int,
-    kernel_bandwidth: Union[int, float],
-    bucket: str,
+    n_candidate_action_train: int,
+    n_candidate_action_eval: int,
     rootdir: str,
-    manifold_rootdir: str,
-    use_manifold: bool,
     experiment_name: str,
     logging_type: str,
     device: torch.device,
@@ -68,6 +57,7 @@ def _process(
     early_stage_logging_path: str,
     late_stage_logging_path: str,
     late_stage_naive_cf_path: str,
+    logging_action_prob_model_path: str,
     **kwargs,
 ):
     reset_seed(base_random_seed)
@@ -121,46 +111,48 @@ def _process(
         device=device,
         random_seed=random_seed,
     )
-    marginal_model = initialize_trainable_marginal_model(
+    logging_action_prob_model = load_logging_action_prob_model(
         env=env,
         base_model=late_stage_cf_policy.base_model,
+        logging_action_prob_model_path=logging_action_prob_model_path,
+        device=device,
+        random_seed=random_seed,
     )
 
-    logging_marginal_model, logging_marginal_model_training_logs = (
-        train_logging_marginal_model(
-            env=env,
-            logged_dataset=logged_dataset,
-            logging_early_stage_policy=logging_early_stage_policy,
-            logging_late_stage_policy=logging_late_stage_policy,
-            is_deterministic_early_stage_logging=(
-                logging_type in ["practical", "deficient"]
-            ),
-            is_deterministic_late_stage_logging=(logging_type == "deficient"),
-            marginal_model=marginal_model,
-            marginal_model_lr=logging_marginal_model_lr,
-            kernel_bandwidth=kernel_bandwidth,
-            n_epoch=n_epoch_regression,
-            n_epochs_per_log=n_epochs_per_log,
-            n_candidate_action_logging=n_candidate_action_logging,
-            device=device,
-            random_seed=random_seed,
-        )
+    is_early_stage_policy, _ = initialize_trainable_policy(
+        env=env,
+        dim_model_emb=dim_model_emb,
+        n_moe_model=1,
+        device=device,
+        random_seed=base_random_seed,
     )
-
+    is_early_stage_policy, is_pg_training_logs = train_is_pg_policy(
+        env=env,
+        logged_dataset=logged_dataset,
+        logging_action_prob_model=logging_action_prob_model,
+        early_stage_policy=is_early_stage_policy,
+        early_stage_lr=is_credit_assigned_pg_lr
+        if credit_assignment_type == "full"
+        else is_vanilla_pg_lr,
+        credit_assignment_type=credit_assignment_type,
+        n_epoch=n_epoch_logging,
+        n_epochs_per_log=n_epochs_per_log,
+        n_candidate_action_train=n_candidate_action_train,
+        n_candidate_action_eval=n_candidate_action_eval,
+        device=device,
+        random_seed=base_random_seed,
+    )
     save_logs(
-        bucket=bucket,
         rootdir=rootdir,
-        manifold_rootdir=manifold_rootdir,
-        use_manifold=use_manifold,
         experiment_name=experiment_name,
         logging_type=logging_type,
-        credit_assignment_type=None,
-        n_candidate_action_train=None,
+        credit_assignment_type=credit_assignment_type,
+        n_candidate_action_train=n_candidate_action_train,
         setting=setting,
         key_param=key_param,
         random_seed=base_random_seed,
-        trained_logging_marginal_model=logging_marginal_model,
-        logging_marginal_model_training_logs=logging_marginal_model_training_logs,
+        trained_is_pg_early_stage_policy=is_early_stage_policy,
+        is_pg_training_logs=is_pg_training_logs,
     )
 
 
@@ -175,50 +167,24 @@ def process(
     experiment_name = conf["experiment_name"]
     logging_type = conf["logging_type"]
 
-    bucket = conf["bucket"]
     rootdir = conf["rootdir"]
-    manifold_rootdir = conf["manifold_rootdir"]
-    use_manifold = conf["use_manifold"]
+
+    if (
+        setting != "n_candidate_action_eval"
+        and conf["n_candidate_action_train"] == "auto"
+    ):
+        conf_["n_candidate_action_train"] = conf["n_candidate_action_eval"]
 
     if experiment_name == "auto":
         experiment_name = setting
 
     rootdir = f"{rootdir}/{experiment_name}"
-    manifold_rootdir = f"{manifold_rootdir}/{experiment_name}"
 
     if conf["early_stage_logging_path"] == "auto":
         conf_["early_stage_logging_path"] = f"{rootdir}/logging/early_stage_policy.pt"
 
-    if conf["manifold_early_stage_logging_path"] == "auto":
-        conf_["manifold_early_stage_logging_path"] = (
-            f"{manifold_rootdir}/logging/early_stage_policy.pt"
-        )
-
     if conf["late_stage_logging_path"] == "auto":
         conf_["late_stage_logging_path"] = f"{rootdir}/logging/late_stage_policy.pt"
-
-    if conf["manifold_late_stage_logging_path"] == "auto":
-        conf_["manifold_late_stage_logging_path"] = (
-            f"{manifold_rootdir}/logging/late_stage_policy.pt"
-        )
-
-    if use_manifold:
-        with ManifoldClient.get_client(bucket=bucket) as client:
-            if not client.sync_exists(conf_["manifold_early_stage_logging_path"]):
-                raise ValueError("manifold_early_stage_logging_path does not exist.")
-            else:
-                client.sync_get(
-                    conf_["manifold_early_stage_logging_path"],
-                    conf_["early_stage_logging_path"],
-                )
-
-            if not client.sync_exists(conf_["manifold_late_stage_logging_path"]):
-                raise ValueError("manifold_late_stage_logging_path does not exist.")
-            else:
-                client.sync_get(
-                    conf_["manifold_late_stage_logging_path"],
-                    conf_["late_stage_logging_path"],
-                )
 
     if not Path(conf_["early_stage_logging_path"]).exists():
         raise ValueError("early_stage_logging_path does not exist.")
@@ -231,33 +197,22 @@ def process(
             conf_["random_seed"] = random_seed + conf["start_random_seed"]
 
             rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={conf_['random_seed']}"
-            manifold_rootdir_ = f"{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={conf_['random_seed']}"
 
             if conf["late_stage_naive_cf_path"] == "auto":
                 conf_["late_stage_naive_cf_path"] = (
                     f"{rootdir_}/naive_cf/late_stage_policy.pt"
                 )
-            if conf["manifold_late_stage_naive_cf_path"] == "auto":
-                conf_["manifold_late_stage_naive_cf_path"] = (
-                    f"{manifold_rootdir_}/naive_cf/late_stage_policy.pt"
-                )
 
-            if use_manifold:
-                with ManifoldClient.get_client(bucket=bucket) as client:
-                    if not client.sync_exists(
-                        conf_["manifold_late_stage_naive_cf_path"]
-                    ):
-                        raise ValueError(
-                            "manifold_late_stage_naive_cf_path does not exist."
-                        )
-                    else:
-                        client.sync_get(
-                            conf_["manifold_late_stage_naive_cf_path"],
-                            conf_["late_stage_naive_cf_path"],
-                        )
+            if conf["logging_action_prob_model_path"] == "auto":
+                conf_["logging_action_prob_model_path"] = (
+                    f"{rootdir_}/logging_action_prob_model/logging_action_prob_model.pt"
+                )
 
             if not Path(conf_["late_stage_naive_cf_path"]).exists():
                 raise ValueError("late_stage_naive_cf_path does not exist.")
+
+            if not Path(conf_["logging_action_prob_model_path"]).exists():
+                raise ValueError("logging_action_prob_model_path does not exist.")
 
     else:
         for key_param in conf[key_param_name]:
@@ -268,33 +223,22 @@ def process(
                 conf_["random_seed"] = random_seed + conf["start_random_seed"]
 
                 rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},param={key_param},logging={logging_type},seed={conf_['random_seed']}"
-                manifold_rootdir_ = f"{manifold_rootdir}/{experiment_name}/{experiment_name},param={key_param},logging={logging_type},seed={conf_['random_seed']}"
 
                 if conf["late_stage_naive_cf_path"] == "auto":
                     conf_["late_stage_naive_cf_path"] = (
                         f"{rootdir_}/naive_cf/late_stage_policy.pt"
                     )
-                if conf["manifold_late_stage_naive_cf_path"] == "auto":
-                    conf_["manifold_late_stage_naive_cf_path"] = (
-                        f"{manifold_rootdir_}/naive_cf/late_stage_policy.pt"
-                    )
 
-                if use_manifold:
-                    with ManifoldClient.get_client(bucket=bucket) as client:
-                        if not client.sync_exists(
-                            conf_["manifold_late_stage_naive_cf_path"]
-                        ):
-                            raise ValueError(
-                                "manifold_late_stage_naive_cf_path does not exist."
-                            )
-                        else:
-                            client.sync_get(
-                                conf_["manifold_late_stage_naive_cf_path"],
-                                conf_["late_stage_naive_cf_path"],
-                            )
+                if conf["logging_action_prob_model_path"] == "auto":
+                    conf_["logging_action_prob_model_path"] = (
+                        f"{rootdir_}/logging_action_prob_model/logging_action_prob_model.pt"
+                    )
 
                 if not Path(conf_["late_stage_naive_cf_path"]).exists():
                     raise ValueError("late_stage_naive_cf_path does not exist.")
+
+                if not Path(conf_["logging_action_prob_model_path"]).exists():
+                    raise ValueError("logging_action_prob_model_path does not exist.")
 
     if setting != "default":
         key_param_name = conf["setting"]
@@ -302,6 +246,12 @@ def process(
         for key_param in conf[key_param_name]:
             conf_["key_param"] = key_param
             conf_[key_param_name] = key_param
+
+            if (
+                setting == "n_candidate_action_eval"
+                and conf["n_candidate_action_train"] == "auto"
+            ):
+                conf_["n_candidate_action_train"] = key_param
 
             for random_seed in range(conf["n_random_seed"]):
                 conf_["random_seed"] = random_seed + conf["start_random_seed"]
@@ -315,9 +265,10 @@ def process(
                     conf_["late_stage_naive_cf_path"] = (
                         f"{rootdir_}/naive_cf/late_stage_policy.pt"
                     )
-                if conf["manifold_late_stage_naive_cf_path"] == "auto":
-                    conf_["manifold_late_stage_naive_cf_path"] = (
-                        f"{manifold_rootdir_}/naive_cf/late_stage_policy.pt"
+
+                if conf["logging_action_prob_model_path"] == "auto":
+                    conf_["logging_action_prob_model_path"] = (
+                        f"{rootdir_}/logging_action_prob_model/logging_action_prob_model.pt"
                     )
 
                 print(
@@ -392,11 +343,8 @@ def main(cfg: DictConfig) -> None:
         "n_epoch_logging": cfg.model.n_epoch_logging,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
-        "bucket": cfg.logs.bucket,
         "rootdir": cfg.logs.rootdir,
-        "manifold_rootdir": cfg.logs.manifold_rootdir,
         "experiment_name": cfg.logs.experiment_name,
-        "use_manifold": cfg.logs.use_manifold,
         "early_stage_logging_path": cfg.path.early_stage_logging_path,  # unused
         "late_stage_logging_path": cfg.path.late_stage_logging_path,  # unused
         "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,  # unused
@@ -412,21 +360,6 @@ def main(cfg: DictConfig) -> None:
         "early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
         "logging_action_prob_model_path": cfg.path.logging_action_prob_model_path,
         "logging_marginal_model_path": cfg.path.logging_marginal_model_path,
-        "manifold_early_stage_logging_path": cfg.path.manifold_early_stage_logging_path,
-        "manifold_late_stage_logging_path": cfg.path.manifold_late_stage_logging_path,
-        "manifold_early_stage_naive_cf_path": cfg.path.manifold_early_stage_naive_cf_path,
-        "manifold_late_stage_naive_cf_path": cfg.path.manifold_late_stage_naive_cf_path,
-        "manifold_early_stage_moe_cf_path": cfg.path.manifold_early_stage_moe_cf_path,
-        "manifold_early_stage_moe_model_selector_path": cfg.path.manifold_early_stage_moe_model_selector_path,
-        "manifold_early_stage_quantile_cf_path": cfg.path.manifold_early_stage_quantile_cf_path,
-        "manifold_early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
-        "manifold_early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
-        "manifold_early_stage_is_credit_assigned_pg_path": cfg.path.early_stage_is_credit_assigned_pg_path,
-        "manifold_early_stage_is_vanilla_pg_path": cfg.path.early_stage_is_vanilla_pg_path,
-        "manifold_early_stage_kernel_is_credit_assigned_pg_path": cfg.path.early_stage_kernel_is_credit_assigned_pg_path,
-        "manifold_early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
-        "manifold_logging_action_prob_model_path": cfg.path.manifold_logging_action_prob_model_path,
-        "manifold_logging_marginal_model_path": cfg.path.manifold_logging_marginal_model_path,
     }
     process(conf)
 

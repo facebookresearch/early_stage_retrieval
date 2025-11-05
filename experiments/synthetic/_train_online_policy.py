@@ -1,4 +1,4 @@
-"""Train the naive-CF policy via regression."""
+"""Train the policy via Online PG."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -10,14 +10,12 @@ import hydra
 import torch
 
 from experiments.synthetic._function import (
-    collect_logged_dataset,
     initialize_trainable_policy,
-    initialize_uniform_policy,
     save_logs,
     setup_data_generation_process,
-    train_early_stage_with_cf,
+    train_online_pg_policy,
 )
-from experiments.synthetic.utils import (
+from experiments.synthetic._utils import (
     assert_configuration,
     format_runtime,
     reset_seed,
@@ -35,14 +33,17 @@ def _process(
     dim_context: int,
     dim_action_emb: int,
     reward_scaler: Union[int, float],
-    data_size: int,
     dim_model_emb: int,
-    early_stage_naive_cf_lr: float,
-    n_epoch: int,
+    online_vanilla_pg_lr: Union[int, float],
+    online_credit_assigned_pg_lr: Union[int, float],
+    credit_assignment_type: str,
+    n_epoch_logging: int,
     n_epochs_per_log: int,
+    n_candidate_action_train: int,
     n_candidate_action_eval: int,
     rootdir: str,
     experiment_name: str,
+    logging_type: str,
     device: torch.device,
     base_random_seed: int,
     random_seed: int,
@@ -62,54 +63,40 @@ def _process(
         random_seed=base_random_seed,
     )
 
-    logging_early_stage_policy, logging_late_stage_policy = initialize_uniform_policy(
-        env=env,
-        device=device,
-        random_seed=base_random_seed,
-    )
-
     reset_seed(random_seed)
 
-    logged_dataset = collect_logged_dataset(
-        env=env,
-        logging_early_stage_policy=logging_early_stage_policy,
-        logging_late_stage_policy=logging_late_stage_policy,
-        is_deterministic_early_stage=False,
-        is_deterministic_late_stage=False,
-        n_candidate_action=100,
-        data_size=data_size,
-    )
-
-    naive_cf_early_stage_policy, _ = initialize_trainable_policy(
+    online_early_stage_policy, _ = initialize_trainable_policy(
         env=env,
         dim_model_emb=dim_model_emb,
         n_moe_model=1,
         device=device,
-        random_seed=random_seed,
+        random_seed=base_random_seed,
     )
-    naive_cf_early_stage_policy, _, naive_cf_training_logs = train_early_stage_with_cf(
+    online_early_stage_policy, online_pg_training_logs = train_online_pg_policy(
         env=env,
-        early_stage_policy=naive_cf_early_stage_policy,
-        logged_dataset=logged_dataset,
-        early_stage_lr=early_stage_naive_cf_lr,
-        model_selector_lr=0.0,  # unused
-        n_epoch=n_epoch,
+        early_stage_policy=online_early_stage_policy,
+        early_stage_lr=online_credit_assigned_pg_lr
+        if credit_assignment_type == "full"
+        else online_vanilla_pg_lr,
+        credit_assignment_type=credit_assignment_type,
+        n_epoch=n_epoch_logging,
         n_epochs_per_log=n_epochs_per_log,
+        n_candidate_action_train=n_candidate_action_train,
         n_candidate_action_eval=n_candidate_action_eval,
         device=device,
-        random_seed=random_seed,
+        random_seed=base_random_seed,
     )
     save_logs(
         rootdir=rootdir,
         experiment_name=experiment_name,
-        logging_type="uniform",
-        credit_assignment_type=None,
-        n_candidate_action_train=None,
+        logging_type=logging_type,
+        credit_assignment_type=credit_assignment_type,
+        n_candidate_action_train=n_candidate_action_train,
         setting=setting,
         key_param=key_param,
-        random_seed=random_seed,
-        trained_naive_cf_early_stage_policy=naive_cf_early_stage_policy,
-        naive_cf_training_logs=naive_cf_training_logs,
+        random_seed=base_random_seed,
+        trained_online_pg_early_stage_policy=online_early_stage_policy,
+        online_pg_training_logs=online_pg_training_logs,
     )
 
 
@@ -121,26 +108,12 @@ def process(
 
     setting = conf["setting"]
     key_param = conf["setting"]
-    experiment_name = conf["experiment_name"]
 
-    rootdir = conf["rootdir"]
-
-    if experiment_name == "auto":
-        experiment_name = setting
-
-    rootdir = f"{rootdir}/{experiment_name}"
-
-    if conf["early_stage_logging_path"] == "auto":
-        conf_["early_stage_logging_path"] = f"{rootdir}/logging/early_stage_policy.pt"
-
-    if conf["late_stage_logging_path"] == "auto":
-        conf_["late_stage_logging_path"] = f"{rootdir}/logging/late_stage_policy.pt"
-
-    if not Path(conf_["early_stage_logging_path"]).exists():
-        raise ValueError("early_stage_logging_path does not exist.")
-
-    if not Path(conf_["late_stage_logging_path"]).exists():
-        raise ValueError("late_stage_logging_path does not exist.")
+    if (
+        setting != "n_candidate_action_eval"
+        and conf["n_candidate_action_train"] == "auto"
+    ):
+        conf_["n_candidate_action_train"] = conf["n_candidate_action_eval"]
 
     if setting != "default":
         key_param_name = conf["setting"]
@@ -148,6 +121,12 @@ def process(
         for key_param in conf[key_param_name]:
             conf_["key_param"] = key_param
             conf_[key_param_name] = key_param
+
+            if (
+                setting == "n_candidate_action_eval"
+                and conf["n_candidate_action_train"] == "auto"
+            ):
+                conf_["n_candidate_action_train"] = key_param
 
             for random_seed in range(conf["n_random_seed"]):
                 conf_["random_seed"] = random_seed + conf["start_random_seed"]
@@ -180,6 +159,7 @@ def main(cfg: DictConfig) -> None:
         "data_size": cfg.setting.data_size,
         "n_action": cfg.setting.n_action,
         "n_output_action": cfg.setting.n_output_action,
+        "n_candidate_action_logging": cfg.setting.n_candidate_action_logging,
         "n_candidate_action_train": cfg.setting.n_candidate_action_train,
         "n_candidate_action_eval": cfg.setting.n_candidate_action_eval,
         "n_user": cfg.setting.n_user,
@@ -187,26 +167,52 @@ def main(cfg: DictConfig) -> None:
         "dim_context": cfg.setting.dim_context,
         "dim_action_emb": cfg.setting.dim_action_emb,
         "reward_scaler": cfg.setting.reward_scaler,
+        "logging_type": cfg.setting.logging_type,
         "device": cfg.setting.device,
         "n_random_seed": cfg.setting.n_random_seed,
         "start_random_seed": cfg.setting.start_random_seed,
         "base_random_seed": cfg.setting.base_random_seed,
         "dim_model_emb": cfg.model.dim_model_emb,
         "n_moe_model": cfg.model.n_moe_model,
+        "early_stage_logging_lr": cfg.model.early_stage_logging_lr,
+        "late_stage_logging_lr": cfg.model.late_stage_logging_lr,
         "early_stage_naive_cf_lr": cfg.model.early_stage_naive_cf_lr,
+        "early_stage_moe_cf_lr": cfg.model.early_stage_moe_cf_lr,
+        "early_stage_moe_selector_lr": cfg.model.early_stage_moe_selector_lr,
+        "quantile_cf_lr": cfg.model.quantile_cf_lr,
         "late_stage_neural_lr": cfg.model.late_stage_neural_lr,
         "online_vanilla_pg_lr": cfg.model.online_vanilla_pg_lr,
         "online_credit_assigned_pg_lr": cfg.model.online_credit_assigned_pg_lr,
+        "is_vanilla_pg_lr": cfg.model.is_vanilla_pg_lr,
+        "is_credit_assigned_pg_lr": cfg.model.is_credit_assigned_pg_lr,
+        "kernel_vanilla_pg_lr": cfg.model.kernel_vanilla_pg_lr,
+        "kernel_creedit_assigned_pg_lr": cfg.model.kernel_creedit_assigned_pg_lr,
+        "logging_action_prob_model_lr": cfg.model.action_prob_model_lr,
+        "logging_marginal_model_lr": cfg.model.logging_marginal_model_lr,
+        "kernel_bandwidth": cfg.model.kernel_bandwidth,
         "credit_assignment_type": cfg.model.credit_assignment_type,
         "n_epoch": cfg.model.n_epoch,
+        "n_epoch_regression": cfg.model.n_epoch_regression,
+        "n_epoch_logging": cfg.model.n_epoch_logging,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
         "rootdir": cfg.logs.rootdir,
         "experiment_name": cfg.logs.experiment_name,
+        "early_stage_logging_path": cfg.path.early_stage_logging_path,  # unused
+        "late_stage_logging_path": cfg.path.late_stage_logging_path,  # unused
         "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,  # unused
         "late_stage_naive_cf_path": cfg.path.late_stage_naive_cf_path,  # unused
+        "early_stage_moe_cf_path": cfg.path.early_stage_moe_cf_path,  # unused
+        "early_stage_moe_model_selector_path": cfg.path.early_stage_moe_model_selector_path,  # unused
+        "early_stage_quantile_cf_path": cfg.path.early_stage_quantile_cf_path,  # unused
         "early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
         "early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
+        "early_stage_is_credit_assigned_pg_path": cfg.path.early_stage_is_credit_assigned_pg_path,
+        "early_stage_is_vanilla_pg_path": cfg.path.early_stage_is_vanilla_pg_path,
+        "early_stage_kernel_is_credit_assigned_pg_path": cfg.path.early_stage_kernel_is_credit_assigned_pg_path,
+        "early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
+        "logging_action_prob_model_path": cfg.path.logging_action_prob_model_path,
+        "logging_marginal_model_path": cfg.path.logging_marginal_model_path,
     }
     process(conf)
 

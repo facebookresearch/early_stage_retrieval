@@ -8,11 +8,11 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 import torch.nn as nn
 
-from early_stage_retrieval.synthetic.dataset import (
+from synthetic.dataset import (
     BaseDataGenerator,
     LoggedDataset,
 )
-from early_stage_retrieval.synthetic.policy import (
+from synthetic.policy import (
     BaseEarlyStagePolicy,
     BaseJointPolicy,
     BaseLateStagePolicy,

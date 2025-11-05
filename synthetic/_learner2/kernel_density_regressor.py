@@ -7,13 +7,13 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 
-from early_stage_retrieval.synthetic.dataset import (
+from synthetic.dataset import (
     LoggedDataset,
 )
-from early_stage_retrieval.synthetic.policy.action_set import (
+from synthetic.policy.action_set import (
     BaseActionSet,
 )
-from early_stage_retrieval.synthetic.policy.base import (
+from synthetic.policy.base import (
     BaseEarlyStagePolicy,
     BaseJointPolicy,
     BaseLateStagePolicy,

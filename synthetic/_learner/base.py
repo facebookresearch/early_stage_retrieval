@@ -7,7 +7,7 @@ from typing import Optional
 
 import torch
 
-from early_stage_retrieval.synthetic.dataset import (
+from synthetic.dataset import (
     LoggedDataset,
 )
 

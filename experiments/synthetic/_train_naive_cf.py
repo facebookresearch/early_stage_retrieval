@@ -1,4 +1,4 @@
-"""Train the quantile estimation model via quantile regression."""
+"""Train the naive-CF policy via regression."""
 
 from copy import deepcopy
 from pathlib import Path
@@ -9,33 +9,21 @@ import hydra
 
 import torch
 
-from early_stage_retrieval.experiments.synthetic.function import (
+from experiments.synthetic._function import (
     collect_logged_dataset,
-    initialize_trainable_qunatile_model,
+    initialize_trainable_policy,
     initialize_uniform_policy,
     load_logging_policy,
     save_logs,
     setup_data_generation_process,
-    train_quantile_model_with_cf,
+    train_early_stage_with_cf,
 )
-from early_stage_retrieval.experiments.synthetic.utils import (
+from experiments.synthetic._utils import (
     assert_configuration,
     format_runtime,
     reset_seed,
 )
-from manifold.clients.python import ManifoldClient
 from omegaconf import DictConfig
-
-# from .function import (
-#     collect_logged_dataset,
-#     initialize_trainable_qunatile_model,
-#     initialize_uniform_policy,
-#     load_logging_policy,
-#     save_logs,
-#     setup_data_generation_process,
-#     train_quantile_model_with_cf,
-# )
-# from .utils import assert_configuration, format_runtime, reset_seed
 
 
 def _process(
@@ -51,14 +39,12 @@ def _process(
     data_size: int,
     dim_model_emb: int,
     logging_type: str,
-    quantile_cf_lr: float,
+    early_stage_naive_cf_lr: float,
     n_epoch: int,
     n_epochs_per_log: int,
     n_candidate_action_logging: int,
-    bucket: str,
+    n_candidate_action_eval: int,
     rootdir: str,
-    manifold_rootdir: str,
-    use_manifold: bool,
     experiment_name: str,
     device: torch.device,
     base_random_seed: int,
@@ -111,24 +97,27 @@ def _process(
         data_size=data_size,
     )
 
-    quantile_cf_model = initialize_trainable_qunatile_model(
+    naive_cf_early_stage_policy, _ = initialize_trainable_policy(
         env=env,
         dim_model_emb=dim_model_emb,
+        n_moe_model=1,
+        device=device,
+        random_seed=random_seed,
     )
-    quantile_cf_model, quantile_cf_training_logs = train_quantile_model_with_cf(
+    naive_cf_early_stage_policy, _, naive_cf_training_logs = train_early_stage_with_cf(
+        env=env,
+        early_stage_policy=naive_cf_early_stage_policy,
         logged_dataset=logged_dataset,
-        quantile_cf_model=quantile_cf_model,
-        quantile_cf_lr=quantile_cf_lr,
+        early_stage_lr=early_stage_naive_cf_lr,
+        model_selector_lr=0.0,  # unused
         n_epoch=n_epoch,
         n_epochs_per_log=n_epochs_per_log,
+        n_candidate_action_eval=n_candidate_action_eval,
         device=device,
         random_seed=random_seed,
     )
     save_logs(
-        bucket=bucket,
         rootdir=rootdir,
-        manifold_rootdir=manifold_rootdir,
-        use_manifold=use_manifold,
         experiment_name=experiment_name,
         logging_type=logging_type,
         credit_assignment_type=None,
@@ -136,8 +125,8 @@ def _process(
         setting=setting,
         key_param=key_param,
         random_seed=random_seed,
-        trained_quantile_cf_model=quantile_cf_model,
-        quantile_cf_training_logs=quantile_cf_training_logs,
+        trained_naive_cf_early_stage_policy=naive_cf_early_stage_policy,
+        naive_cf_training_logs=naive_cf_training_logs,
     )
 
 
@@ -151,50 +140,18 @@ def process(
     key_param = conf["setting"]
     experiment_name = conf["experiment_name"]
 
-    bucket = conf["bucket"]
     rootdir = conf["rootdir"]
-    manifold_rootdir = conf["manifold_rootdir"]
-    use_manifold = conf["use_manifold"]
 
     if experiment_name == "auto":
         experiment_name = setting
 
     rootdir = f"{rootdir}/{experiment_name}"
-    manifold_rootdir = f"{manifold_rootdir}/{experiment_name}"
 
     if conf["early_stage_logging_path"] == "auto":
         conf_["early_stage_logging_path"] = f"{rootdir}/logging/early_stage_policy.pt"
 
-    if conf["manifold_early_stage_logging_path"] == "auto":
-        conf_["manifold_early_stage_logging_path"] = (
-            f"{manifold_rootdir}/logging/early_stage_policy.pt"
-        )
-
     if conf["late_stage_logging_path"] == "auto":
         conf_["late_stage_logging_path"] = f"{rootdir}/logging/late_stage_policy.pt"
-
-    if conf["manifold_late_stage_logging_path"] == "auto":
-        conf_["manifold_late_stage_logging_path"] = (
-            f"{manifold_rootdir}/logging/late_stage_policy.pt"
-        )
-
-    if use_manifold:
-        with ManifoldClient.get_client(bucket=bucket) as client:
-            if not client.sync_exists(conf_["manifold_early_stage_logging_path"]):
-                raise ValueError("manifold_early_stage_logging_path does not exist.")
-            else:
-                client.sync_get(
-                    conf_["manifold_early_stage_logging_path"],
-                    conf_["early_stage_logging_path"],
-                )
-
-            if not client.sync_exists(conf_["manifold_late_stage_logging_path"]):
-                raise ValueError("manifold_late_stage_logging_path does not exist.")
-            else:
-                client.sync_get(
-                    conf_["manifold_late_stage_logging_path"],
-                    conf_["late_stage_logging_path"],
-                )
 
     if not Path(conf_["early_stage_logging_path"]).exists():
         raise ValueError("early_stage_logging_path does not exist.")
@@ -277,11 +234,8 @@ def main(cfg: DictConfig) -> None:
         "n_epoch_logging": cfg.model.n_epoch_logging,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
-        "bucket": cfg.logs.bucket,
         "rootdir": cfg.logs.rootdir,
-        "manifold_rootdir": cfg.logs.manifold_rootdir,
         "experiment_name": cfg.logs.experiment_name,
-        "use_manifold": cfg.logs.use_manifold,
         "early_stage_logging_path": cfg.path.early_stage_logging_path,
         "late_stage_logging_path": cfg.path.late_stage_logging_path,
         "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,  # unused
@@ -297,21 +251,6 @@ def main(cfg: DictConfig) -> None:
         "early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
         "logging_action_prob_model_path": cfg.path.logging_action_prob_model_path,
         "logging_marginal_model_path": cfg.path.logging_marginal_model_path,
-        "manifold_early_stage_logging_path": cfg.path.manifold_early_stage_logging_path,
-        "manifold_late_stage_logging_path": cfg.path.manifold_late_stage_logging_path,
-        "manifold_early_stage_naive_cf_path": cfg.path.manifold_early_stage_naive_cf_path,
-        "manifold_late_stage_naive_cf_path": cfg.path.manifold_late_stage_naive_cf_path,
-        "manifold_early_stage_moe_cf_path": cfg.path.manifold_early_stage_moe_cf_path,
-        "manifold_early_stage_moe_model_selector_path": cfg.path.manifold_early_stage_moe_model_selector_path,
-        "manifold_early_stage_quantile_cf_path": cfg.path.manifold_early_stage_quantile_cf_path,
-        "manifold_early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
-        "manifold_early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
-        "manifold_early_stage_is_credit_assigned_pg_path": cfg.path.early_stage_is_credit_assigned_pg_path,
-        "manifold_early_stage_is_vanilla_pg_path": cfg.path.early_stage_is_vanilla_pg_path,
-        "manifold_early_stage_kernel_is_credit_assigned_pg_path": cfg.path.early_stage_kernel_is_credit_assigned_pg_path,
-        "manifold_early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
-        "manifold_logging_action_prob_model_path": cfg.path.manifold_logging_action_prob_model_path,
-        "manifold_logging_marginal_model_path": cfg.path.manifold_logging_marginal_model_path,
     }
     process(conf)
 

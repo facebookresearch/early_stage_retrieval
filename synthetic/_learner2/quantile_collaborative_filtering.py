@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import torch
 
-from early_stage_retrieval.synthetic.dataset import (
+from synthetic.dataset import (
     LoggedDataset,
 )
 from torch import nn

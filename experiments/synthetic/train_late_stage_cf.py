@@ -9,33 +9,20 @@ import hydra
 
 import torch
 
-from early_stage_retrieval.experiments.synthetic.function import (
+from experiments.synthetic.function import (
     collect_logged_dataset,
     initialize_trainable_policy,
     initialize_uniform_policy,
-    load_logging_policy,
     save_logs,
     setup_data_generation_process,
     train_late_stage_with_cf,
 )
-from early_stage_retrieval.experiments.synthetic.utils import (
+from experiments.synthetic.utils import (
     assert_configuration,
     format_runtime,
     reset_seed,
 )
-from manifold.clients.python import ManifoldClient
 from omegaconf import DictConfig
-
-# from .function import (
-#     collect_logged_dataset,
-#     initialize_trainable_policy,
-#     initialize_uniform_policy,
-#     load_logging_policy,
-#     save_logs,
-#     setup_data_generation_process,
-#     train_late_stage_with_cf,
-# )
-# from .utils import assert_configuration, format_runtime, reset_seed
 
 
 def _process(
@@ -50,22 +37,15 @@ def _process(
     reward_scaler: Union[int, float],
     data_size: int,
     dim_model_emb: int,
-    logging_type: str,
     late_stage_neural_lr: float,
     n_epoch: int,
     n_epochs_per_log: int,
-    n_candidate_action_logging: int,
     n_candidate_action_eval: int,
-    bucket: str,
     rootdir: str,
-    manifold_rootdir: str,
-    use_manifold: bool,
     experiment_name: str,
     device: torch.device,
     base_random_seed: int,
     random_seed: int,
-    early_stage_logging_path: str,
-    late_stage_logging_path: str,
     **kwargs,
 ):
     reset_seed(base_random_seed)
@@ -81,34 +61,22 @@ def _process(
         device=device,
         random_seed=base_random_seed,
     )
-
-    if logging_type == "uniform":
-        logging_early_stage_policy, logging_late_stage_policy = (
-            initialize_uniform_policy(
-                env=env,
-                device=device,
-                random_seed=base_random_seed,
-            )
-        )
-    else:
-        logging_early_stage_policy, logging_late_stage_policy = load_logging_policy(
+    logging_early_stage_policy, logging_late_stage_policy = (
+        initialize_uniform_policy(
             env=env,
-            dim_model_emb=dim_model_emb,
-            early_stage_logging_path=early_stage_logging_path,
-            late_stage_logging_path=late_stage_logging_path,
             device=device,
             random_seed=base_random_seed,
         )
-
+    )
     reset_seed(random_seed)
 
     logged_dataset = collect_logged_dataset(
         env=env,
         logging_early_stage_policy=logging_early_stage_policy,
         logging_late_stage_policy=logging_late_stage_policy,
-        is_deterministic_early_stage=(logging_type in ["practical", "deficient"]),
-        is_deterministic_late_stage=(logging_type == "deficient"),
-        n_candidate_action=n_candidate_action_logging,
+        is_deterministic_early_stage=False,
+        is_deterministic_late_stage=False,
+        n_candidate_action=100,
         data_size=data_size,
     )
 
@@ -131,12 +99,9 @@ def _process(
         random_seed=random_seed,
     )
     save_logs(
-        bucket=bucket,
         rootdir=rootdir,
-        manifold_rootdir=manifold_rootdir,
-        use_manifold=use_manifold,
         experiment_name=experiment_name,
-        logging_type=logging_type,
+        logging_type='uniform',
         credit_assignment_type=None,
         n_candidate_action_train=None,
         setting=setting,
@@ -157,50 +122,18 @@ def process(
     key_param = conf["setting"]
     experiment_name = conf["experiment_name"]
 
-    bucket = conf["bucket"]
     rootdir = conf["rootdir"]
-    manifold_rootdir = conf["manifold_rootdir"]
-    use_manifold = conf["use_manifold"]
 
     if experiment_name == "auto":
         experiment_name = setting
 
     rootdir = f"{rootdir}/{experiment_name}"
-    manifold_rootdir = f"{manifold_rootdir}/{experiment_name}"
 
     if conf["early_stage_logging_path"] == "auto":
         conf_["early_stage_logging_path"] = f"{rootdir}/logging/early_stage_policy.pt"
 
-    if conf["manifold_early_stage_logging_path"] == "auto":
-        conf_["manifold_early_stage_logging_path"] = (
-            f"{manifold_rootdir}/logging/early_stage_policy.pt"
-        )
-
     if conf["late_stage_logging_path"] == "auto":
         conf_["late_stage_logging_path"] = f"{rootdir}/logging/late_stage_policy.pt"
-
-    if conf["manifold_late_stage_logging_path"] == "auto":
-        conf_["manifold_late_stage_logging_path"] = (
-            f"{manifold_rootdir}/logging/late_stage_policy.pt"
-        )
-
-    if use_manifold:
-        with ManifoldClient.get_client(bucket=bucket) as client:
-            if not client.sync_exists(conf_["manifold_early_stage_logging_path"]):
-                raise ValueError("manifold_early_stage_logging_path does not exist.")
-            else:
-                client.sync_get(
-                    conf_["manifold_early_stage_logging_path"],
-                    conf_["early_stage_logging_path"],
-                )
-
-            if not client.sync_exists(conf_["manifold_late_stage_logging_path"]):
-                raise ValueError("manifold_late_stage_logging_path does not exist.")
-            else:
-                client.sync_get(
-                    conf_["manifold_late_stage_logging_path"],
-                    conf_["late_stage_logging_path"],
-                )
 
     if not Path(conf_["early_stage_logging_path"]).exists():
         raise ValueError("early_stage_logging_path does not exist.")
@@ -246,7 +179,6 @@ def main(cfg: DictConfig) -> None:
         "data_size": cfg.setting.data_size,
         "n_action": cfg.setting.n_action,
         "n_output_action": cfg.setting.n_output_action,
-        "n_candidate_action_logging": cfg.setting.n_candidate_action_logging,
         "n_candidate_action_train": cfg.setting.n_candidate_action_train,
         "n_candidate_action_eval": cfg.setting.n_candidate_action_eval,
         "n_user": cfg.setting.n_user,
@@ -254,69 +186,26 @@ def main(cfg: DictConfig) -> None:
         "dim_context": cfg.setting.dim_context,
         "dim_action_emb": cfg.setting.dim_action_emb,
         "reward_scaler": cfg.setting.reward_scaler,
-        "logging_type": cfg.setting.logging_type,
         "device": cfg.setting.device,
         "n_random_seed": cfg.setting.n_random_seed,
         "start_random_seed": cfg.setting.start_random_seed,
         "base_random_seed": cfg.setting.base_random_seed,
         "dim_model_emb": cfg.model.dim_model_emb,
         "n_moe_model": cfg.model.n_moe_model,
-        "early_stage_logging_lr": cfg.model.early_stage_logging_lr,
-        "late_stage_logging_lr": cfg.model.late_stage_logging_lr,
         "early_stage_naive_cf_lr": cfg.model.early_stage_naive_cf_lr,
-        "early_stage_moe_cf_lr": cfg.model.early_stage_moe_cf_lr,
-        "early_stage_moe_selector_lr": cfg.model.early_stage_moe_selector_lr,
-        "quantile_cf_lr": cfg.model.quantile_cf_lr,
         "late_stage_neural_lr": cfg.model.late_stage_neural_lr,
         "online_vanilla_pg_lr": cfg.model.online_vanilla_pg_lr,
         "online_credit_assigned_pg_lr": cfg.model.online_credit_assigned_pg_lr,
-        "is_vanilla_pg_lr": cfg.model.is_vanilla_pg_lr,
-        "is_credit_assigned_pg_lr": cfg.model.is_credit_assigned_pg_lr,
-        "kernel_vanilla_pg_lr": cfg.model.kernel_vanilla_pg_lr,
-        "kernel_creedit_assigned_pg_lr": cfg.model.kernel_creedit_assigned_pg_lr,
-        "logging_action_prob_model_lr": cfg.model.action_prob_model_lr,
-        "logging_marginal_model_lr": cfg.model.logging_marginal_model_lr,
-        "kernel_bandwidth": cfg.model.kernel_bandwidth,
         "credit_assignment_type": cfg.model.credit_assignment_type,
         "n_epoch": cfg.model.n_epoch,
-        "n_epoch_regression": cfg.model.n_epoch_regression,
-        "n_epoch_logging": cfg.model.n_epoch_logging,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
-        "bucket": cfg.logs.bucket,
         "rootdir": cfg.logs.rootdir,
-        "manifold_rootdir": cfg.logs.manifold_rootdir,
         "experiment_name": cfg.logs.experiment_name,
-        "use_manifold": cfg.logs.use_manifold,
-        "early_stage_logging_path": cfg.path.early_stage_logging_path,
-        "late_stage_logging_path": cfg.path.late_stage_logging_path,
         "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,  # unused
         "late_stage_naive_cf_path": cfg.path.late_stage_naive_cf_path,  # unused
-        "early_stage_moe_cf_path": cfg.path.early_stage_moe_cf_path,  # unused
-        "early_stage_quantile_cf_path": cfg.path.early_stage_quantile_cf_path,  # unused
         "early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
         "early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
-        "early_stage_is_credit_assigned_pg_path": cfg.path.early_stage_is_credit_assigned_pg_path,
-        "early_stage_is_vanilla_pg_path": cfg.path.early_stage_is_vanilla_pg_path,
-        "early_stage_kernel_is_credit_assigned_pg_path": cfg.path.early_stage_kernel_is_credit_assigned_pg_path,
-        "early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
-        "logging_action_prob_model_path": cfg.path.logging_action_prob_model_path,
-        "logging_marginal_model_path": cfg.path.logging_marginal_model_path,
-        "manifold_early_stage_logging_path": cfg.path.manifold_early_stage_logging_path,
-        "manifold_late_stage_logging_path": cfg.path.manifold_late_stage_logging_path,
-        "manifold_early_stage_naive_cf_path": cfg.path.manifold_early_stage_naive_cf_path,
-        "manifold_late_stage_naive_cf_path": cfg.path.manifold_late_stage_naive_cf_path,
-        "manifold_early_stage_moe_cf_path": cfg.path.manifold_early_stage_moe_cf_path,
-        "manifold_early_stage_moe_model_selector_path": cfg.path.manifold_early_stage_moe_model_selector_path,
-        "manifold_early_stage_quantile_cf_path": cfg.path.manifold_early_stage_quantile_cf_path,
-        "manifold_early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
-        "manifold_early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
-        "manifold_early_stage_is_credit_assigned_pg_path": cfg.path.early_stage_is_credit_assigned_pg_path,
-        "manifold_early_stage_is_vanilla_pg_path": cfg.path.early_stage_is_vanilla_pg_path,
-        "manifold_early_stage_kernel_is_credit_assigned_pg_path": cfg.path.early_stage_kernel_is_credit_assigned_pg_path,
-        "manifold_early_stage_kernel_vanilla_pg_path": cfg.path.early_stage_kernel_vanilla_pg_path,
-        "manifold_logging_action_prob_model_path": cfg.path.manifold_logging_action_prob_model_path,
-        "manifold_logging_marginal_model_path": cfg.path.manifold_logging_marginal_model_path,
     }
     process(conf)
 

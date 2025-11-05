@@ -7,7 +7,7 @@ from typing import Optional
 
 import torch
 
-from early_stage_retrieval.synthetic.utils import (
+from synthetic.utils import (
     sigmoid,
 )
 

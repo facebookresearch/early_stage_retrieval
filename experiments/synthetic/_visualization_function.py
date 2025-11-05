@@ -1,17 +1,12 @@
 """Functions for the visualization."""
 
+from typing import Optional
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 
-from iopath.common.file_io import PathManager
-from iopath.fb.manifold import ManifoldPathHandler
-
-pm = PathManager()
-pm.register_handler(ManifoldPathHandler())
 
 
-manifold_rootdir = ""
 colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
 
@@ -19,28 +14,22 @@ def visualize_training_curve(
     n_seed: int = 1,
     experiment_name: str = "default",
     logging_type: str = "uniform",
-    manifold_rootdir: str = manifold_rootdir,
+    rootdir: Optional[str] = None,
 ):
     naive_cf_val_losses = torch.zeros((500 + 1, n_seed))
     moe_cf_val_losses = torch.zeros((500 + 1, n_seed))
     late_stage_cf_val_losses = torch.zeros((500 + 1, n_seed))
 
     for seed in range(n_seed):
-        with pm.open(
-            f"manifold://{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={seed}/naive_cf/training_process/val_losses.pt",
-            "rb",
-        ) as f:
-            naive_cf_val_losses[:, seed] = torch.load(f)
-        with pm.open(
-            f"manifold://{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={seed}/moe_cf/training_process/val_losses.pt",
-            "rb",
-        ) as f:
-            moe_cf_val_losses[:, seed] = torch.load(f)
-        with pm.open(
-            f"manifold://{manifold_rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={seed}/naive_cf/late_stage_training_process/val_losses.pt",
-            "rb",
-        ) as f:
-            late_stage_cf_val_losses[:, seed] = torch.load(f)
+        naive_cf_val_losses[:, seed] = torch.load(
+            f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={seed}/naive_cf/training_process/val_losses.pt",
+        )
+        moe_cf_val_losses[:, seed] = torch.load(
+            f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={seed}/moe_cf/training_process/val_losses.pt",
+        )
+        late_stage_cf_val_losses[:, seed] = torch.load(
+            f"{rootdir}/{experiment_name}/{experiment_name},logging={logging_type},seed={seed}/naive_cf/late_stage_training_process/val_losses.pt",
+        )
 
     x = torch.linspace(0, 50000 + 1, 500 + 1)[1:-1]
     early_stage_single_val_loss = naive_cf_val_losses[1:-1]
@@ -104,18 +93,10 @@ def visualize_training_curve(
 def visualize_baseline_performance(
     experiment_name: str = "default",
     logging_type: str = "uniform",
-    manifold_rootdir: str = manifold_rootdir,
+    rootdir: Optional[str] = None,
 ):
-    with pm.open(
-        f"manifold://{manifold_rootdir}/{experiment_name}/reference_performance.csv",
-        "r",
-    ) as f:
-        reference_df = pd.read_csv(f)
-    with pm.open(
-        f"manifold://{manifold_rootdir}/{experiment_name}/baseline_performance_{logging_type}.csv",
-        "r",
-    ) as f:
-        df = pd.read_csv(f)
+    reference_df = pd.read_csv(f"{rootdir}/{experiment_name}/reference_performance.csv")
+    df = pd.read_csv(f"{rootdir}/{experiment_name}/baseline_performance_{logging_type}.csv")
 
     fig, axes = plt.subplots(1, 3, figsize=(5 * 3, 3))
     n_candidate_action = reference_df["n_candidate_action_eval"]

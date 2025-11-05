@@ -6,7 +6,7 @@ from typing import List, Optional, Union
 
 import torch
 
-from early_stage_retrieval.synthetic.policy import (
+from synthetic.policy import (
     BaseEarlyStagePolicy,
     BaseJointPolicy,
     BaseLateStagePolicy,
