@@ -26,7 +26,6 @@ from .policy import (
     BaselineLateStagePolicy,
     BaselineSingleStagePolicy,
 )
-from .subset_selection import GreedySubsetEarlyStagePolicy
 from .uniform import (
     UniformEarlyStagePolicy,
     UniformLateStagePolicy,
@@ -56,5 +55,4 @@ __all__ = [
     "OptimalSingleStagePolicy",
     "OracleSoftmaxEarlyStagePolicy",
     "OracleSoftmaxLateStagePolicy",
-    "GreedySubsetEarlyStagePolicy",
 ]

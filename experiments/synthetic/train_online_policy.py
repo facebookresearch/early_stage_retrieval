@@ -9,7 +9,7 @@ import hydra
 
 import torch
 
-from experiments.synthetic._function import (
+from experiments.synthetic.function import (
     initialize_trainable_policy,
     save_logs,
     setup_data_generation_process,

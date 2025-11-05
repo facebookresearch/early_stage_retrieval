@@ -1,6 +1,5 @@
 """Functions called in the experiment pyfiles."""
 
-from collections import Counter
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
