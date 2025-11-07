@@ -337,6 +337,9 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
         actions: torch.Tensor, shape (n_samples, n_output_action)
             The actions to calculate the probability.
 
+        n_candidate_action: int
+            The number of candidate actions.
+
         n_candidate_per_model: List[int]
             The number of candidate actions per model.
 
@@ -422,6 +425,46 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
             raise NotImplementedError()
 
         return log_prob  # pyre-ignore
+    
+    def _top1_log_prob_given_logits_and_actions(
+        self,
+        logits: torch.Tensor,
+        actions: torch.Tensor,
+    ) -> torch.Tensor:
+        """Calculate the plackett-luce probability of the given actions.
+
+        Note
+        ------
+        The gradient is given as follows:
+
+            \pi_{ESR}(a is selected at top-1) = \frac{ exp(a) }{ exp(A) }
+
+        where
+
+            A = logsumexp( all logits )
+            B = logit a
+
+
+        Input
+        ------
+        logits: torch.Tensor, shape (n_model, n_samples, n_action)
+            The logits of the actions.
+
+        actions: torch.Tensor, shape (n_samples, n_output_action)
+            The actions to calculate the probability.
+
+        Output
+        ------
+        log_prob: torch.Tensor, shape (n_samples, n_output_action)
+            The log probability of the actions (differential).
+
+        """
+        logits = logits[0]
+        a = torch.gather(logits, 1, actions)
+        A = torch.logsumexp(logits, dim=-1)
+
+        log_prob = a - A.unsqueeze(dim=-1)
+        return log_prob
 
     def _log_prob_given_logits_and_actions(
         self,
@@ -432,6 +475,7 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
         n_candidate_per_model: Optional[List[int]] = None,
         require_grad_model_id: Optional[int] = None,
         is_credit_assigned_gradient: bool = False,
+        is_top1_gradient: bool = False,
     ) -> torch.Tensor:
         """Calculate the plackett-luce probability of the given actions.
 
@@ -473,141 +517,142 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
         """
         n_model, n_sample, _ = logits.shape
 
-        if is_credit_assigned_gradient:
-            n_output_action = actions.shape[1]  # pyre-ignore
-        else:
-            n_candidate_action = candidate_actions.shape[1]  # pyre-ignore
+        if is_top1_gradient:
+            logits = logits[0]
+            a = torch.gather(logits, 1, actions)
+            A = torch.logsumexp(logits, dim=-1)
+            log_prob = a - A.unsqueeze(dim=-1)
 
-        if n_candidate_per_model is None:
-            n_candidate_per_model = self._n_candidate_per_model(
-                n_candidate_action=n_candidate_action, n_model=n_model
+        else:
+            if is_credit_assigned_gradient:
+                n_output_action = actions.shape[1]  # pyre-ignore
+            else:
+                n_candidate_action = candidate_actions.shape[1]  # pyre-ignore
+
+            if n_candidate_per_model is None:
+                n_candidate_per_model = self._n_candidate_per_model(
+                    n_candidate_action=n_candidate_action, n_model=n_model
+                )
+            else:
+                assert len(n_candidate_per_model) == n_model
+                assert sum(n_candidate_per_model) == n_candidate_action
+
+            model_id = torch.tensor(
+                [i for i in range(n_model) for j in range(n_candidate_per_model[i])],
+                device=self.device,
             )
-        else:
-            assert len(n_candidate_per_model) == n_model
-            assert sum(n_candidate_per_model) == n_candidate_action
 
-        model_id = torch.tensor(
-            [i for i in range(n_model) for j in range(n_candidate_per_model[i])],
-            device=self.device,
-        )
+            topk_candidate_ex_a = self._topk_exluding_actions(
+                logits=logits,
+                actions=actions,  # pyre-ignore
+                n_candidate_action=n_candidate_action,
+                n_candidate_per_model=n_candidate_per_model,
+            )
 
-        topk_candidate_ex_a = self._topk_exluding_actions(
-            logits=logits,
-            actions=actions,  # pyre-ignore
-            n_candidate_action=n_candidate_action,
-            n_candidate_per_model=n_candidate_per_model,
-        )
+            topk_candidate_inc_a = candidate_actions
 
-        topk_candidate_inc_a = candidate_actions
+            if require_grad_model_id is None:
+                # calculate exp(a)  (n_sample, n_output_action, n_candidate_action)
+                if is_credit_assigned_gradient:
+                    target_logits = torch.gather(
+                        logits,
+                        2,
+                        actions.unsqueeze(0).expand(n_model, -1, -1),  # pyre-ignore
+                    )
+                    a = target_logits[model_id].permute(1, 2, 0)
 
-        if require_grad_model_id is None:
-            # calculate exp(a)  (n_sample, n_output_action, n_candidate_action)
-            if is_credit_assigned_gradient:
-                target_logits = torch.gather(
-                    logits,
-                    2,
-                    actions.unsqueeze(0).expand(n_model, -1, -1),  # pyre-ignore
-                )
-                a = target_logits[model_id].permute(1, 2, 0)
+                else:
+                    target_logits = torch.gather(
+                        logits,
+                        2,
+                        candidate_actions.unsqueeze(0).expand(n_model, -1, -1),
+                    )
+                    a = target_logits[model_id].permute(1, 2, 0)
+                    a = a.diagonal(dim1=1, dim2=2)
 
-            else:
-                target_logits = torch.gather(
-                    logits,
-                    2,
-                    candidate_actions.unsqueeze(0).expand(n_model, -1, -1),
-                )
-                a = target_logits[model_id].permute(1, 2, 0)
-                a = a.diagonal(dim1=1, dim2=2)
+                # calculate A  (n_sample, n_candidate_action)
+                logsumexp_all = torch.logsumexp(logits, dim=-1)
+                A = logsumexp_all[model_id].T
 
-            # calculate A  (n_sample, n_candidate_action)
-            logsumexp_all = torch.logsumexp(logits, dim=-1)
-            A = logsumexp_all[model_id].T
+                # calculate B  (n_sample, n_output_action, n_candidate_action - 1)
+                if n_candidate_action > 1:
+                    logsumexp_selected = []
+                    for k in range(1, n_candidate_action):
+                        logit_ = logits[model_id[k]]
 
-            # calculate B  (n_sample, n_output_action, n_candidate_action - 1)
-            if n_candidate_action > 1:
-                logsumexp_selected = []
-                for k in range(1, n_candidate_action):
-                    logit_ = logits[model_id[k]]
+                        if is_credit_assigned_gradient:
+                            prev_topk = topk_candidate_ex_a[:, :, :k]
+                            selected_logits = torch.gather(
+                                logit_.unsqueeze(1).expand(
+                                    -1,
+                                    n_output_action,  # pyre-ignore
+                                    -1,
+                                ),
+                                2,
+                                prev_topk,
+                            )
 
-                    if is_credit_assigned_gradient:
-                        prev_topk = topk_candidate_ex_a[:, :, :k]
-                        selected_logits = torch.gather(
-                            logit_.unsqueeze(1).expand(
-                                -1,
-                                n_output_action,  # pyre-ignore
-                                -1,
-                            ),
-                            2,
-                            prev_topk,
+                        else:
+                            prev_topk = topk_candidate_inc_a[:, :k]  # pyre-ignore
+                            selected_logits = torch.gather(
+                                logit_,
+                                1,
+                                prev_topk,
+                            )
+
+                        logsumexp_selected.append(
+                            torch.logsumexp(selected_logits, dim=-1).unsqueeze(-1)
                         )
 
-                    else:
-                        prev_topk = topk_candidate_inc_a[:, :k]  # pyre-ignore
-                        selected_logits = torch.gather(
-                            logit_,
-                            1,
-                            prev_topk,
+                    B = torch.cat(logsumexp_selected, dim=-1)
+
+                # denominator  (n_sample, n_output_action, n_candidate_action)
+                if is_credit_assigned_gradient:
+                    A = A.unsqueeze(1)
+                    normalizer = (
+                        A[:, :, 0]
+                        .unsqueeze(-1)
+                        .expand(-1, n_output_action, 1)  # pyre-ignore
+                    )
+
+                    if n_candidate_action > 1:
+                        A = A[:, :, 1:]
+
+                        normalizer_ = A + torch.log1p(
+                            -torch.exp(B - A) + 1e-10  # pyre-ignore
                         )
+                        normalizer = torch.cat([normalizer, normalizer_], dim=-1)
 
-                    logsumexp_selected.append(
-                        torch.logsumexp(selected_logits, dim=-1).unsqueeze(-1)
+                    # kth prob  (n_sample, n_output_action, n_candidate_action)
+                    kth_prob = torch.exp(a - normalizer)
+
+                    # overall prob  (n_sample, n_output_action)
+                    log_prob = torch.log1p(
+                        -torch.exp(torch.sum(torch.log1p(-kth_prob + 1e-10), dim=-1))
+                        + 1e-10
                     )
 
-                B = torch.cat(logsumexp_selected, dim=-1)
+                else:
+                    normalizer = A[:, 0].unsqueeze(-1)
 
-            # denominator  (n_sample, n_output_action, n_candidate_action)
-            if is_credit_assigned_gradient:
-                A = A.unsqueeze(1)
-                normalizer = (
-                    A[:, :, 0]
-                    .unsqueeze(-1)
-                    .expand(-1, n_output_action, 1)  # pyre-ignore
-                )
+                    if n_candidate_action > 1:
+                        A = A[:, 1:]
 
-                if n_candidate_action > 1:
-                    A = A[:, :, 1:]
+                        normalizer_ = A + torch.log1p(
+                            -torch.exp(B - A) + 1e-10  # pyre-ignore
+                        )
+                        normalizer = torch.cat([normalizer, normalizer_], dim=-1)
 
-                    normalizer_ = A + torch.log1p(
-                        -torch.exp(B - A) + 1e-10  # pyre-ignore
-                    )
-                    normalizer = torch.cat([normalizer, normalizer_], dim=-1)
+                    # kth prob  (n_sample, n_candidate_action)
+                    kth_prob = torch.exp(a - normalizer)
 
-                # kth prob  (n_sample, n_output_action, n_candidate_action)
-                kth_prob = torch.exp(a - normalizer)
+                    # overall prob  (n_sample, action)
+                    log_prob = torch.log1p(
+                        -torch.exp(torch.log1p(-kth_prob + 1e-10)) + 1e-10
+                    ).sum(dim=-1)
 
-                # overall prob  (n_sample, n_output_action)
-                log_prob = torch.log1p(
-                    -torch.exp(torch.sum(torch.log1p(-kth_prob + 1e-10), dim=-1))
-                    + 1e-10
-                )
-
-            else:
-                normalizer = A[:, 0].unsqueeze(-1)
-
-                if n_candidate_action > 1:
-                    A = A[:, 1:]
-
-                    normalizer_ = A + torch.log1p(
-                        -torch.exp(B - A) + 1e-10  # pyre-ignore
-                    )
-                    normalizer = torch.cat([normalizer, normalizer_], dim=-1)
-
-                # kth prob  (n_sample, n_candidate_action)
-                kth_prob = torch.exp(a - normalizer)
-
-                # overall prob  (n_sample, action)
-                log_prob = torch.log1p(
-                    -torch.exp(torch.log1p(-kth_prob + 1e-10)) + 1e-10
-                ).sum(dim=-1)
-
-                # # kth prob  (n_sample, n_candidate_action)
-                # kth_log_prob = a - normalizer
-
-                # # overall prob  (n_sample, )
-                # log_prob = kth_log_prob.sum(dim=-1)
-
-        if require_grad_model_id is not None:
-            raise NotImplementedError()
+            if require_grad_model_id is not None:
+                raise NotImplementedError()
 
         return log_prob  # pyre-ignore
 
@@ -712,6 +757,7 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
         n_candidate_per_model: Optional[List[int]] = None,
         is_deterministic: bool = False,
         is_credit_assigned: bool = False,
+        is_top1: bool = False,
         require_grad_model_id: Optional[int] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -740,6 +786,9 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
         is_credit_assigned: bool
             Whether to use credit assignment.
 
+        is_top1: bool
+            Whether to use top-1 policy gradient.
+
         require_grad_model_id: int
             The model id to calculate the gradient.
 
@@ -752,6 +801,9 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
             The log joint probability of the sampled actions (used for caluculating the policy gradient, differential).
 
         """
+        if is_credit_assigned and is_top1:
+            raise ValueError("Gradient type is unselected. Please choose to use credit-assigned PG or top-1 PG.")
+        
         if is_credit_assigned and actions is None:
             raise ValueError("actions must be provided for credit-assigned PG.")
         elif not is_credit_assigned and candidate_actions is None:
@@ -773,6 +825,7 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
                 n_candidate_per_model=n_candidate_per_model,
                 require_grad_model_id=require_grad_model_id,
                 is_credit_assigned_gradient=is_credit_assigned,
+                is_top1_gradient=is_top1,
             )
 
             prob = log_prob.clone().detach().exp()  # non-differential

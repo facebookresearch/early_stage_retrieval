@@ -6,14 +6,12 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 
 from synthetic.dataset import (
-    LoggedDataset,
     SyntheticDataGenerator,
     VectorialContextSampler,
     VectorialLatentSampler,
     VectorialRewardModel,
 )
 from synthetic.learner import (
-    CollaborativeFilteringLearner,
     OnlinePolicyLearner,
 )
 from synthetic.policy import (
@@ -27,6 +25,7 @@ from synthetic.policy import (
     OptimalLateStagePolicy,
     UniformEarlyStagePolicy,
     UniformLateStagePolicy,
+    OracleSoftmaxLateStagePolicy,
     VectorialActionSet,
 )
 
@@ -79,26 +78,6 @@ def setup_data_generation_process(
     return datagen
 
 
-def collect_logged_dataset(
-    env: SyntheticDataGenerator,
-    logging_early_stage_policy: BaseEarlyStagePolicy,
-    logging_late_stage_policy: BaseLateStagePolicy,
-    is_deterministic_early_stage: bool,
-    is_deterministic_late_stage: bool,
-    n_candidate_action: int,
-    data_size: int,
-) -> LoggedDataset:
-    logged_dataset = env.sample_dataset(
-        early_stage_policy=logging_early_stage_policy,
-        late_stage_policy=logging_late_stage_policy,
-        is_deterministic_early_stage=is_deterministic_early_stage,
-        is_deterministic_late_stage=is_deterministic_late_stage,
-        n_candidate_action=n_candidate_action,
-        n_samples=data_size,
-    )
-    return logged_dataset
-
-
 def evaluate_policy(
     env: SyntheticDataGenerator,
     early_stage_policy: BaseEarlyStagePolicy,
@@ -119,171 +98,11 @@ def evaluate_policy(
     return online_performance
 
 
-def train_early_stage_and_late_stage_with_cf(
-    env: SyntheticDataGenerator,
-    logged_dataset: LoggedDataset,
-    early_stage_policy: BaselineEarlyStagePolicy,
-    late_stage_policy: BaselineLateStagePolicy,
-    early_stage_lr: float,
-    late_stage_lr: float,
-    model_selector_lr: float,
-    n_epoch: int,
-    n_epochs_per_log: int,
-    n_candidate_action_eval: int,
-    device: torch.device,
-    random_seed: int,
-) -> Tuple[
-    BaselineEarlyStagePolicy,
-    BaselineLateStagePolicy,
-    Dict[str, torch.Tensor],
-]:
-    cf_learner = CollaborativeFilteringLearner(
-        early_stage_policy=early_stage_policy,
-        late_stage_policy=late_stage_policy,
-        early_stage_optimizer_kwargs={
-            "lr": early_stage_lr,
-        },
-        late_stage_optimizer_kwargs={
-            "lr": late_stage_lr,
-        },
-        env=env,
-        device=device,
-        random_seed=random_seed,
-    )
-    (
-        trained_early_stage_policy,
-        trained_late_stage_policy,
-        cf_training_logs,
-    ) = cf_learner.train_early_and_late_stage_policies_offline(
-        dataset=logged_dataset,
-        loss_type="mse",
-        n_epoch=n_epoch,
-        n_epochs_per_log=n_epochs_per_log,
-        n_candidate_action=n_candidate_action_eval,
-        is_deterministic_early_stage_eval=True,
-        is_deterministic_late_stage_eval=True,
-        make_copy=False,  #
-        return_training_logs=True,
-        patience=torch.inf,
-        random_seed=random_seed,
-    )
-    return (
-        trained_early_stage_policy,
-        trained_late_stage_policy,
-        cf_training_logs,
-    )
-
-
-def train_early_stage_with_cf(
-    env: SyntheticDataGenerator,
-    logged_dataset: LoggedDataset,
-    early_stage_policy: BaselineEarlyStagePolicy,
-    early_stage_lr: float,
-    model_selector_lr: float,
-    n_epoch: int,
-    n_epochs_per_log: int,
-    n_candidate_action_eval: int,
-    device: torch.device,
-    random_seed: int,
-) -> Tuple[
-    BaselineEarlyStagePolicy,
-    Dict[str, torch.Tensor],
-]:
-    _, late_stage_policy_optimal = initialize_optimal_policy(
-        env=env,
-        device=device,
-        random_seed=random_seed,
-    )
-
-    cf_learner = CollaborativeFilteringLearner(
-        early_stage_policy=early_stage_policy,
-        late_stage_policy=late_stage_policy_optimal,
-        is_model_free_late_stage_policy=True,
-        early_stage_optimizer_kwargs={
-            "lr": early_stage_lr,
-        },
-        env=env,
-        device=device,
-        random_seed=random_seed,
-    )
-    (
-        trained_early_stage_policy,
-        cf_training_logs,
-    ) = cf_learner.train_early_stage_policy_offline(
-        dataset=logged_dataset,
-        loss_type="mse",
-        n_epoch=n_epoch,
-        n_epochs_per_log=n_epochs_per_log,
-        n_candidate_action=n_candidate_action_eval,
-        is_deterministic_early_stage_eval=True,
-        is_deterministic_late_stage_eval=True,
-        make_copy=False,  #
-        return_training_logs=True,
-        patience=torch.inf,
-        random_seed=random_seed,
-    )
-    return (
-        trained_early_stage_policy,
-        cf_training_logs,
-    )
-
-
-def train_late_stage_with_cf(
-    env: SyntheticDataGenerator,
-    logged_dataset: LoggedDataset,
-    late_stage_policy: BaselineLateStagePolicy,
-    late_stage_lr: float,
-    n_epoch: int,
-    n_epochs_per_log: int,
-    n_candidate_action_eval: int,
-    device: torch.device,
-    random_seed: int,
-) -> Tuple[
-    BaselineLateStagePolicy,
-    Dict[str, torch.Tensor],
-]:
-    early_stage_policy_optimal, _ = initialize_optimal_policy(
-        env=env,
-        device=device,
-        random_seed=random_seed,
-    )
-
-    cf_learner = CollaborativeFilteringLearner(
-        early_stage_policy=early_stage_policy_optimal,
-        late_stage_policy=late_stage_policy,
-        is_model_free_early_stage_policy=True,
-        late_stage_optimizer_kwargs={
-            "lr": late_stage_lr,
-        },
-        env=env,
-        device=device,
-        random_seed=random_seed,
-    )
-    (
-        trained_late_stage_policy,
-        cf_training_logs,
-    ) = cf_learner.train_late_stage_policy_offline(
-        dataset=logged_dataset,
-        loss_type="mse",
-        n_epoch=n_epoch,
-        n_epochs_per_log=n_epochs_per_log,
-        n_candidate_action=n_candidate_action_eval,
-        is_deterministic_early_stage_eval=True,
-        is_deterministic_late_stage_eval=True,
-        make_copy=False,  #
-        return_training_logs=True,
-        patience=torch.inf,
-        random_seed=random_seed,
-    )
-    return (
-        trained_late_stage_policy,
-        cf_training_logs,
-    )
-
 def train_online_pg_policy(
     env: SyntheticDataGenerator,
     early_stage_policy: BaselineEarlyStagePolicy,
     early_stage_lr: float,
+    late_stage_optimality: str,
     credit_assignment_type: str,
     n_epoch: int,
     n_epochs_per_log: int,
@@ -291,20 +110,40 @@ def train_online_pg_policy(
     n_candidate_action_eval: int,
     device: torch.device,
     random_seed: int,
+    use_wandb: bool,
 ) -> Tuple[
     BaselineEarlyStagePolicy,
     Dict[str, torch.Tensor],
-]:
-    _, late_stage_policy_optimal = initialize_optimal_policy(
-        env=env,
-        device=device,
-        random_seed=random_seed,
-    )
+]:    
+    if late_stage_optimality == "optimal":
+        _, late_stage_policy = initialize_optimal_policy(
+            env=env,
+            device=device,
+            random_seed=random_seed,
+        )
+    elif late_stage_optimality == "noisy":
+        late_stage_policy = initialize_noisy_optimal_late_stage_policy(
+            env=env,
+            device=device,
+            random_seed=random_seed,
+        )
+    elif late_stage_optimality == "uniform":
+        _, late_stage_policy = initialize_uniform_policy(
+            env=env,
+            device=device,
+            random_seed=random_seed,
+        )
+    elif late_stage_optimality == "anti":
+        late_stage_policy = initialize_anti_optimal_late_stage_policy(
+            env=env,
+            device=device,
+            random_seed=random_seed,
+        )
 
     online_pg_learner = OnlinePolicyLearner(
         early_stage_policy=early_stage_policy,
-        target_late_stage_policy=late_stage_policy_optimal,
-        eval_late_stage_policy=late_stage_policy_optimal,
+        target_late_stage_policy=late_stage_policy,
+        eval_late_stage_policy=late_stage_policy,
         early_stage_optimizer_kwargs={"lr": early_stage_lr},
         env=env,
         device=device,
@@ -319,10 +158,12 @@ def train_online_pg_policy(
             return_training_logs=True,
             credit_assignment_type=credit_assignment_type,  #
             is_deterministic_early_stage_eval=True,
-            is_deterministic_late_stage_eval=True,
+            is_deterministic_late_stage_eval=(late_stage_optimality != "uniform"),
             n_candidate_action_train=n_candidate_action_train,  #
             n_candidate_action_eval=n_candidate_action_eval,  #
             random_seed=random_seed,
+            use_wandb=use_wandb,
+            experiment_name=f"Meta-ESR-{credit_assignment_type}",
         )
     )
     return (
@@ -333,121 +174,43 @@ def train_online_pg_policy(
 
 def save_logs(
     rootdir: str,
-    experiment_name: str,
     random_seed: int,
-    logging_type: str,
+    late_stage_optimality: str,
     credit_assignment_type: Optional[str],
     n_candidate_action_train: Optional[int],
-    setting: str,
-    key_param: Optional[Union[str, int, float]],  # None in the default setting
-    trained_naive_cf_early_stage_policy: Optional[BaselineEarlyStagePolicy] = None,
-    trained_naive_cf_late_stage_policy: Optional[BaselineLateStagePolicy] = None,
+    n_output_action: int,
+    n_moe_model: int,
     trained_online_pg_early_stage_policy: Optional[BaseEarlyStagePolicy] = None,
-    naive_cf_training_logs: Optional[Dict[str, torch.Tensor]] = None,
-    late_stage_cf_training_logs: Optional[Dict[str, torch.Tensor]] = None,
     online_pg_training_logs: Optional[Dict[str, torch.Tensor]] = None,
 ) -> None:
-    if experiment_name == "auto":
-        experiment_name = setting
+    detailed_configs_ = f"n_candidate={n_candidate_action_train},late_stage={late_stage_optimality},n_model={n_moe_model},n_output={n_output_action},seed={random_seed}"
 
-    # update the credit-assignment information in the path
-    if key_param is not None:
-        online_pg_rootdir = Path(
-            f"{rootdir}/{experiment_name}/{experiment_name},param={key_param},logging={'na'},credit_assignment={credit_assignment_type},seed={random_seed}"
-        )
+    online_pg_dir = Path(f"{rootdir}/online_early_stage/credit={credit_assignment_type}")
+    online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/credit={credit_assignment_type}")
 
-    else:
-        online_pg_rootdir = Path(
-            f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={credit_assignment_type},seed={random_seed}"
-        )
+    online_pg_dir.mkdir(parents=True, exist_ok=True)
+    online_pg_log_dir.mkdir(parents=True, exist_ok=True)
 
-    if (
-        trained_online_pg_early_stage_policy is not None
-        or online_pg_training_logs is not None
-    ):
-        online_pg_dir = Path(online_pg_rootdir / "online")
+    if trained_online_pg_early_stage_policy is not None:
+        online_pg_dir = Path(f"{rootdir}/online_early_stage/credit={credit_assignment_type}")
         online_pg_dir.mkdir(parents=True, exist_ok=True)
 
-        if trained_online_pg_early_stage_policy is not None:
-            online_pg_early_stage_policy_path = online_pg_dir / "early_stage_policy.pt"
+        online_pg_early_stage_policy_path = online_pg_dir / f"{detailed_configs_}.pt"
 
-            torch.save(
-                trained_online_pg_early_stage_policy.base_model.state_dict(),
-                online_pg_early_stage_policy_path,
-            )
-
-        if online_pg_training_logs is not None:
-            online_pg_training_process_dir = Path(online_pg_dir / "training_process")
-            online_pg_training_process_dir.mkdir(parents=True, exist_ok=True)
-
-            for key in online_pg_training_logs.keys():
-                online_pg_training_logs_path = (
-                    online_pg_training_process_dir / f"{key}.pt"
-                )
-                torch.save(online_pg_training_logs[key], online_pg_training_logs_path)
-
-    # update the logging information in the path
-    if key_param is not None:
-        reg_rootdir = Path(
-            f"{rootdir}/{experiment_name}/{experiment_name},param={key_param},logging={'uniform'},seed={random_seed}"
+        torch.save(
+            trained_online_pg_early_stage_policy.base_model.state_dict(),
+            online_pg_early_stage_policy_path,
         )
 
-    else:
-        reg_rootdir = Path(
-            f"{rootdir}/{experiment_name}/{experiment_name},logging={'uniform'},seed={random_seed}"
-        )
+    if online_pg_training_logs is not None:
+        for key in online_pg_training_logs.keys():
+            online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/credit={credit_assignment_type}/{key}")
+            online_pg_log_dir.mkdir(parents=True, exist_ok=True)
 
-    rootdir.mkdir(parents=True, exist_ok=True)
-
-    if (
-        trained_naive_cf_early_stage_policy is not None
-        or trained_naive_cf_late_stage_policy is not None
-        or naive_cf_training_logs is not None
-        or late_stage_cf_training_logs is not None
-    ):
-        naive_cf_dir = Path(reg_rootdir / "naive_cf")
-        naive_cf_dir.mkdir(parents=True, exist_ok=True)
-
-        if trained_naive_cf_early_stage_policy is not None:
-            naive_cf_early_stage_policy_path = naive_cf_dir / "early_stage_policy.pt"
-
-            torch.save(
-                trained_naive_cf_early_stage_policy.base_model.state_dict(),
-                naive_cf_early_stage_policy_path,
+            online_pg_training_logs_path = (
+                online_pg_log_dir / f"{detailed_configs_}.pt"
             )
-
-        if trained_naive_cf_late_stage_policy is not None:
-            naive_cf_late_stage_policy_path = naive_cf_dir / "late_stage_policy.pt"
-
-            torch.save(
-                trained_naive_cf_late_stage_policy.base_model.state_dict(),
-                naive_cf_late_stage_policy_path,
-            )
-
-        if naive_cf_training_logs is not None:
-            naive_cf_training_process_dir = Path(naive_cf_dir / "training_process")
-            naive_cf_training_process_dir.mkdir(parents=True, exist_ok=True)
-
-            for key in naive_cf_training_logs.keys():
-                naive_cf_training_logs_path = (
-                    naive_cf_training_process_dir / f"{key}.pt"
-                )
-                torch.save(naive_cf_training_logs[key], naive_cf_training_logs_path)
-
-        if late_stage_cf_training_logs is not None:
-            late_stage_cf_training_process_dir = Path(
-                naive_cf_dir / "late_stage_training_process"
-            )
-            late_stage_cf_training_process_dir.mkdir(parents=True, exist_ok=True)
-
-            for key in late_stage_cf_training_logs.keys():
-                late_stage_cf_training_logs_path = (
-                    late_stage_cf_training_process_dir / f"{key}.pt"
-                )
-                torch.save(
-                    late_stage_cf_training_logs[key],
-                    late_stage_cf_training_logs_path,
-                )
+            torch.save(online_pg_training_logs[key], online_pg_training_logs_path)
 
 
 def initialize_trainable_policy(
@@ -518,6 +281,34 @@ def initialize_uniform_policy(
         random_seed=random_seed,
     )
     return uniform_early_stage_policy, uniform_late_stage_policy
+
+
+def initialize_noisy_optimal_late_stage_policy(
+    env: SyntheticDataGenerator,
+    device: torch.device,
+    random_seed: int,
+) -> Tuple[OracleSoftmaxLateStagePolicy]:
+    noisy_late_stage_policy = OracleSoftmaxLateStagePolicy(
+        action_set=env.action_set,
+        inverse_temperature=1.0,
+        device=device,
+        random_seed=random_seed,
+    )
+    return noisy_late_stage_policy
+
+
+def initialize_anti_optimal_late_stage_policy(
+    env: SyntheticDataGenerator,
+    device: torch.device,
+    random_seed: int,
+) -> Tuple[OptimalLateStagePolicy]:
+    anti_late_stage_policy = OptimalLateStagePolicy(
+        action_set=env.action_set,
+        is_anti_optimal=True,
+        device=device,
+        random_seed=random_seed,
+    )
+    return anti_late_stage_policy
 
 
 def load_naive_cf_policy(

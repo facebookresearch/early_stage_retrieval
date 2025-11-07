@@ -52,10 +52,10 @@ def main(cfg: DictConfig) -> None:
 
     conf = {
         "setting": cfg.setting.setting,
-        "data_size": cfg.setting.data_size,
         "n_action": cfg.setting.n_action,
         "n_output_action": cfg.setting.n_output_action,
         "n_candidate_action_eval": cfg.setting.n_candidate_action_eval,
+        "late_stage_optimality": cfg.setting.late_stage_optimality,
         "n_user": cfg.setting.n_user,
         "n_latent": cfg.setting.n_latent,
         "dim_context": cfg.setting.dim_context,

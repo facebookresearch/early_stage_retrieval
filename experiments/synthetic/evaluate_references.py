@@ -15,6 +15,8 @@ from experiments.synthetic.function import (
     evaluate_policy,
     initialize_optimal_policy,
     initialize_uniform_policy,
+    initialize_noisy_optimal_late_stage_policy,
+    initialize_anti_optimal_late_stage_policy,
     setup_data_generation_process,
 )
 from experiments.synthetic.utils import (
@@ -63,21 +65,49 @@ def _process(
         device=device,
         random_seed=base_random_seed,
     )
+    noisy_late_stage_policy = initialize_noisy_optimal_late_stage_policy(
+        env=env,
+        device=device,
+        random_seed=base_random_seed,
+    )
+    anti_late_stage_policy = initialize_anti_optimal_late_stage_policy(
+        env=env,
+        device=device,
+        random_seed=base_random_seed,
+    )
 
     algorithms = [
-        "uniform",  # uniform x optimal
-        "optimal",  # optimal x optimal
+        "unif_anti",    # uniform x anti-optimal
+        "unif_unif",    # uniform x uniform
+        "unif_noisy",   # uniform x noisy optimal
+        "unif_opt",     # optimal x optimal
+        "opt_anti",     # optimal x anti-optimal
+        "opt_uniform",  # optimal x uniform
+        "opt_noisy",    # optimal x noisy optimal
+        "opt_opt",      # optimal x optimal
     ]
     early_stage_policies = [
         uniform_early_stage_policy,
+        uniform_early_stage_policy,
+        uniform_early_stage_policy,
+        uniform_early_stage_policy,
+        optimal_early_stage_policy,
+        optimal_early_stage_policy,
+        optimal_early_stage_policy,
         optimal_early_stage_policy,
     ]
     late_stage_policies = [
+        anti_late_stage_policy,
+        uniform_late_stage_policy,
+        noisy_late_stage_policy,
         optimal_late_stage_policy,
+        anti_late_stage_policy,
+        uniform_late_stage_policy,
+        noisy_late_stage_policy,
         optimal_late_stage_policy,
     ]
-    is_deterministic_early_stage_flgs = [False, True]
-    is_derterministic_late_stage_flgs = [True, True]
+    is_deterministic_early_stage_flgs = [False, False, False, False, True, True, True, True]
+    is_derterministic_late_stage_flgs = [True, False, False, True, True, False, False, True]
 
     performance = {}
     for i, algo in enumerate(algorithms):
@@ -110,20 +140,6 @@ def process(
             experiment_name = "default"
         else:
             experiment_name = setting
-
-    rootdir = f"{rootdir}/{experiment_name}"
-
-    if conf["early_stage_logging_path"] == "auto":
-        conf_["early_stage_logging_path"] = f"{rootdir}/logging/early_stage_policy.pt"
-
-    if conf["late_stage_logging_path"] == "auto":
-        conf_["late_stage_logging_path"] = f"{rootdir}/logging/late_stage_policy.pt"
-
-    if not Path(conf_["early_stage_logging_path"]).exists():
-        raise ValueError("early_stage_logging_path does not exist.")
-
-    if not Path(conf_["late_stage_logging_path"]).exists():
-        raise ValueError("late_stage_logging_path does not exist.")
 
     performance_dict = defaultdict(list)
 
@@ -169,11 +185,11 @@ def main(cfg: DictConfig) -> None:
 
     conf = {
         "setting": cfg.setting.setting,
-        "data_size": cfg.setting.data_size,
         "n_action": cfg.setting.n_action,
         "n_output_action": cfg.setting.n_output_action,
         "n_candidate_action_train": cfg.setting.n_candidate_action_train,
         "n_candidate_action_eval": cfg.setting.n_candidate_action_eval,
+        "late_stage_optimality": cfg.setting.late_stage_optimality,
         "n_user": cfg.setting.n_user,
         "n_latent": cfg.setting.n_latent,
         "dim_context": cfg.setting.dim_context,
@@ -189,16 +205,19 @@ def main(cfg: DictConfig) -> None:
         "late_stage_neural_lr": cfg.model.late_stage_neural_lr,
         "online_vanilla_pg_lr": cfg.model.online_vanilla_pg_lr,
         "online_credit_assigned_pg_lr": cfg.model.online_credit_assigned_pg_lr,
+        "online_top1_pg_lr": cfg.model.online_top1_pg_lr,
         "credit_assignment_type": cfg.model.credit_assignment_type,
         "n_epoch": cfg.model.n_epoch,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
         "rootdir": cfg.logs.rootdir,
         "experiment_name": cfg.logs.experiment_name,
+        "use_wandb": cfg.logs.use_wandb,
         "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,  # unused
         "late_stage_naive_cf_path": cfg.path.late_stage_naive_cf_path,  # unused
         "early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
         "early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
+        "early_stage_online_top1_pg_path": cfg.path.early_stage_online_top1_pg_path,
     }
     process(conf)
 

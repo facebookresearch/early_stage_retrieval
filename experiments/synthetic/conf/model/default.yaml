@@ -1,10 +1,11 @@
 dim_model_emb: 10
-n_moe_model: 5
+n_moe_model: 1
 early_stage_naive_cf_lr: 5e-2
 late_stage_neural_lr: 1e-1
 online_vanilla_pg_lr: 1e-1
 online_credit_assigned_pg_lr: 1e-2
-credit_assignment_type: full
+online_top1_pg_lr: 1e-2
+credit_assignment_type: CA
 n_epoch: 50000
 n_steps_per_epoch: 10
 n_epochs_per_log: 100

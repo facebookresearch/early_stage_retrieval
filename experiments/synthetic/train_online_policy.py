@@ -24,26 +24,26 @@ from omegaconf import DictConfig
 
 
 def _process(
-    setting: str,
-    key_param: Optional[Union[int, str]],
     n_user: int,
     n_action: int,
     n_latent: int,
     n_output_action: int,
+    n_moe_model: int,
     dim_context: int,
     dim_action_emb: int,
     reward_scaler: Union[int, float],
+    late_stage_optimality: str,
     dim_model_emb: int,
     online_vanilla_pg_lr: Union[int, float],
     online_credit_assigned_pg_lr: Union[int, float],
+    online_top1_pg_lr: Union[int, float],
     credit_assignment_type: str,
-    n_epoch_logging: int,
+    n_epoch: int,
     n_epochs_per_log: int,
     n_candidate_action_train: int,
     n_candidate_action_eval: int,
     rootdir: str,
-    experiment_name: str,
-    logging_type: str,
+    use_wandb: bool,
     device: torch.device,
     base_random_seed: int,
     random_seed: int,
@@ -65,36 +65,42 @@ def _process(
 
     reset_seed(random_seed)
 
+    if credit_assignment_type == "CA":
+        early_stage_lr = online_credit_assigned_pg_lr
+    elif credit_assignment_type == "ALL":
+        early_stage_lr = online_vanilla_pg_lr
+    elif credit_assignment_type == "TOP1":
+        early_stage_lr = online_top1_pg_lr
+
     online_early_stage_policy, _ = initialize_trainable_policy(
         env=env,
         dim_model_emb=dim_model_emb,
-        n_moe_model=1,
+        n_moe_model=n_moe_model,
         device=device,
-        random_seed=base_random_seed,
+        random_seed=random_seed,
     )
     online_early_stage_policy, online_pg_training_logs = train_online_pg_policy(
         env=env,
         early_stage_policy=online_early_stage_policy,
-        early_stage_lr=online_credit_assigned_pg_lr
-        if credit_assignment_type == "full"
-        else online_vanilla_pg_lr,
+        early_stage_lr=early_stage_lr,
+        late_stage_optimality=late_stage_optimality,
         credit_assignment_type=credit_assignment_type,
-        n_epoch=n_epoch_logging,
+        n_epoch=n_epoch,
         n_epochs_per_log=n_epochs_per_log,
         n_candidate_action_train=n_candidate_action_train,
         n_candidate_action_eval=n_candidate_action_eval,
         device=device,
-        random_seed=base_random_seed,
+        random_seed=random_seed,
+        use_wandb=use_wandb,
     )
     save_logs(
         rootdir=rootdir,
-        experiment_name=experiment_name,
-        logging_type=logging_type,
+        n_moe_model=n_moe_model,
+        n_output_action=n_output_action,
+        late_stage_optimality=late_stage_optimality,
         credit_assignment_type=credit_assignment_type,
         n_candidate_action_train=n_candidate_action_train,
-        setting=setting,
-        key_param=key_param,
-        random_seed=base_random_seed,
+        random_seed=random_seed,
         trained_online_pg_early_stage_policy=online_early_stage_policy,
         online_pg_training_logs=online_pg_training_logs,
     )
@@ -156,11 +162,11 @@ def main(cfg: DictConfig) -> None:
 
     conf = {
         "setting": cfg.setting.setting,
-        "data_size": cfg.setting.data_size,
         "n_action": cfg.setting.n_action,
         "n_output_action": cfg.setting.n_output_action,
         "n_candidate_action_train": cfg.setting.n_candidate_action_train,
         "n_candidate_action_eval": cfg.setting.n_candidate_action_eval,
+        "late_stage_optimality": cfg.setting.late_stage_optimality,
         "n_user": cfg.setting.n_user,
         "n_latent": cfg.setting.n_latent,
         "dim_context": cfg.setting.dim_context,
@@ -176,16 +182,17 @@ def main(cfg: DictConfig) -> None:
         "late_stage_neural_lr": cfg.model.late_stage_neural_lr,
         "online_vanilla_pg_lr": cfg.model.online_vanilla_pg_lr,
         "online_credit_assigned_pg_lr": cfg.model.online_credit_assigned_pg_lr,
+        "online_top1_pg_lr": cfg.model.online_top1_pg_lr,
         "credit_assignment_type": cfg.model.credit_assignment_type,
         "n_epoch": cfg.model.n_epoch,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
         "rootdir": cfg.logs.rootdir,
         "experiment_name": cfg.logs.experiment_name,
-        "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,  # unused
-        "late_stage_naive_cf_path": cfg.path.late_stage_naive_cf_path,  # unused
+        "use_wandb": cfg.logs.use_wandb,
         "early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
         "early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
+        "early_stage_online_top1_pg_path": cfg.path.early_stage_online_top1_pg_path,
     }
     process(conf)
 

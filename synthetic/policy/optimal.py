@@ -23,8 +23,11 @@ class OptimalEarlyStagePolicy(BaseEarlyStagePolicy):
     action_set: Optional[BaseActionSet]
         The action set.
 
-    n_action: Optional[int] = None
+    n_action: Optional[int]
         The number of actions.
+
+    is_anti_optimal: bool, default=False
+        Whether the policy is anti optimal.
 
     device: Optional[torch.device]
         The device to use.
@@ -37,6 +40,7 @@ class OptimalEarlyStagePolicy(BaseEarlyStagePolicy):
     base_model: Optional[nn.Module] = None
     action_set: Optional[BaseActionSet] = None
     n_action: Optional[int] = None
+    is_anti_optimal: bool = False
     device: Optional[torch.device] = None
     random_seed: Optional[int] = None
 
@@ -85,7 +89,10 @@ class OptimalEarlyStagePolicy(BaseEarlyStagePolicy):
             The retrieved actions.
 
         """
-        _, topk = torch.topk(factual_rewards, k=n_candidate_action, dim=1)
+        if self.is_anti_optimal:
+            _, topk = torch.topk(-factual_rewards, k=n_candidate_action, dim=1)
+        else:
+            _, topk = torch.topk(factual_rewards, k=n_candidate_action, dim=1)
         return topk
 
     def sample(  # pyre-ignore
@@ -172,8 +179,11 @@ class OptimalLateStagePolicy(BaseLateStagePolicy):
     action_set: Optional[BaseActionSet]
         The action set.
 
-    n_action: Optional[int] = None
+    n_action: Optional[int]
         The number of actions.
+
+    is_anti_optimal: bool, default=False
+        Whether the policy is anti-optimal.
 
     device: Optional[torch.device]
         The device to use.
@@ -186,6 +196,7 @@ class OptimalLateStagePolicy(BaseLateStagePolicy):
     base_model: Optional[nn.Module] = None
     action_set: Optional[BaseActionSet] = None
     n_action: Optional[int] = None
+    is_anti_optimal: bool = False
     device: Optional[torch.device] = None
     random_seed: Optional[int] = None
 
@@ -246,7 +257,11 @@ class OptimalLateStagePolicy(BaseLateStagePolicy):
 
         """
         factual_rewards = torch.gather(factual_rewards, 1, candidate_actions)
-        _, within_candidate_idx = torch.topk(factual_rewards, k=n_output_action, dim=1)
+
+        if self.is_anti_optimal:
+            _, within_candidate_idx = torch.topk(-factual_rewards, k=n_output_action, dim=1)
+        else:
+            _, within_candidate_idx = torch.topk(factual_rewards, k=n_output_action, dim=1)
         topk = torch.gather(candidate_actions, 1, within_candidate_idx)
         return topk
 
@@ -359,8 +374,11 @@ class OptimalSingleStagePolicy(BaseSingleStagePolicy):
     action_set: Optional[BaseActionSet]
         The action set.
 
-    n_action: Optional[int] = None
+    n_action: Optional[int]
         The number of actions.
+
+    is_anti_optimal: bool, default=False.
+        Whether the policy is anti-optimal.
 
     device: Optional[torch.device]
         The device to use.
@@ -373,6 +391,7 @@ class OptimalSingleStagePolicy(BaseSingleStagePolicy):
     base_model: Optional[nn.Module] = None
     action_set: Optional[BaseActionSet] = None
     n_action: Optional[int] = None
+    is_anti_optimal: bool = False
     device: Optional[torch.device] = None
     random_seed: Optional[int] = None
 
@@ -428,7 +447,10 @@ class OptimalSingleStagePolicy(BaseSingleStagePolicy):
             The retrieved actions.
 
         """
-        _, topk = torch.topk(factual_rewards, k=n_output_action, dim=1)
+        if self.is_anti_optimal:
+            _, topk = torch.topk(-factual_rewards, k=n_output_action, dim=1)
+        else:
+            _, topk = torch.topk(factual_rewards, k=n_output_action, dim=1)
         return topk
 
     def sample(  # pyre-ignore
@@ -491,6 +513,12 @@ class OracleSoftmaxEarlyStagePolicy(BaseEarlyStagePolicy):
     n_action: Optional[int]
         The number of actions.
 
+    inverse_temperature: float, default=1.0
+        Inverse temperature parameter of softmax.
+
+    is_anti_optimal: bool, default=False.
+        Whether the policy is anti-optimal.
+
     device: Optional[torch.device]
         The device to use.
 
@@ -502,6 +530,8 @@ class OracleSoftmaxEarlyStagePolicy(BaseEarlyStagePolicy):
     base_model: Optional[nn.Module] = None
     action_set: Optional[BaseActionSet] = None
     n_action: Optional[int] = None
+    inverse_temperature: float = 1.0
+    is_anti_optimal: bool = False
     device: Optional[torch.device] = None
     random_seed: Optional[int] = None
 
@@ -543,7 +573,13 @@ class OracleSoftmaxEarlyStagePolicy(BaseEarlyStagePolicy):
             The sampled actions.
 
         """
-        _, topk = torch.topk(logits, k=n_candidate_action, dim=1)
+        logits = logits * self.inverse_temperature
+
+        if self.is_anti_optimal:
+            _, topk = torch.topk(-logits, k=n_candidate_action, dim=1)
+        else:
+            _, topk = torch.topk(logits, k=n_candidate_action, dim=1)
+
         return topk
 
     def retrieve_topk(  # pyre-ignore
@@ -623,6 +659,8 @@ class OracleSoftmaxEarlyStagePolicy(BaseEarlyStagePolicy):
                 factual_rewards.shape
             ).to(self.device)
 
+        gumbel_noise = -gumbel_noise if self.is_anti_optimal else gumbel_noise
+
         actions = self._topk(
             logits=factual_rewards + gumbel_noise.squeeze(0),
             n_candidate_action=n_candidate_action,
@@ -684,6 +722,12 @@ class OracleSoftmaxLateStagePolicy(BaseLateStagePolicy):
     n_action: Optional[int]
         The number of actions.
 
+    inverse_temperature: float, default=1.0
+        Inverse temperature parameter of softmax.
+
+    is_anti_optimal: bool, default=False.
+        Whether the policy is anti-optimal.
+
     device: Optional[torch.device]
         The device to use.
 
@@ -695,6 +739,8 @@ class OracleSoftmaxLateStagePolicy(BaseLateStagePolicy):
     base_model: Optional[nn.Module] = None
     action_set: Optional[BaseActionSet] = None
     n_action: Optional[int] = None
+    inverse_temperature: float = 1.0
+    is_anti_optimal: bool = False
     device: Optional[torch.device] = None
     random_seed: Optional[int] = None
 
@@ -744,7 +790,12 @@ class OracleSoftmaxLateStagePolicy(BaseLateStagePolicy):
             The index of the sampled actions within the candidate actions.
 
         """
-        _, within_candidate_idx = torch.topk(logits, k=n_output_action, dim=1)
+        logits = logits * self.inverse_temperature
+
+        if self.is_anti_optimal:
+            _, within_candidate_idx = torch.topk(-logits, k=n_output_action, dim=1)
+        else:
+            _, within_candidate_idx = torch.topk(logits, k=n_output_action, dim=1)
         actions = torch.gather(candidate_actions, 1, within_candidate_idx)
         return actions, within_candidate_idx
 
@@ -853,6 +904,8 @@ class OracleSoftmaxLateStagePolicy(BaseLateStagePolicy):
             gumbel_noise = self.gumbel_dist.sample(  # pyre-ignore
                 factual_rewards.shape
             ).to(self.device)
+
+        gumbel_noise = -gumbel_noise if self.is_anti_optimal else gumbel_noise
 
         topk, _ = self._topk(
             candidate_actions=candidate_actions,

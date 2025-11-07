@@ -130,28 +130,35 @@ def process(
     ):
         for random_seed in range(conf["n_random_seed"]):
             conf_["random_seed"] = random_seed + conf["start_random_seed"]
+            n_cand_ = conf_['n_candidate_action_train']
+            late_stage_ = conf_['late_stage_optimality']
+            n_model_ = conf_['n_moe_model']
+            n_out_ = conf_['n_output_action']
+            seed_ = conf_['random_seed']
 
-            rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
+            detailed_configs_ = f"n_candidate={n_cand_},late_stage={late_stage_},n_model={n_model_},n_output={n_out_},seed={seed_}"
 
             if conf["early_stage_online_credit_assigned_pg_path"] == "auto":
                 conf_["early_stage_online_credit_assigned_pg_path"] = (
-                    f"{rootdir_}/online/early_stage_policy.pt"
+                    f"{rootdir}/online_early_stage/credit={'CA'}/{detailed_configs_}.pt"
+                )
+            if conf["early_stage_online_vanilla_pg_path"] == "auto":
+                conf_["early_stage_online_vanilla_pg_path"] = (
+                    f"{rootdir}/online_early_stage/credit={'ALL'}/{detailed_configs_}.pt"
+                )
+            if conf["early_stage_online_top1_pg_path"] == "auto":
+                conf_["early_stage_online_top1_pg_path"] = (
+                    f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                 )
 
             if not Path(conf_["early_stage_online_credit_assigned_pg_path"]).exists():
                 raise ValueError(
                     "early_stage_online_credit_assigned_pg_path does not exist."
                 )
-
-            rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-
-            if conf["early_stage_online_vanilla_pg_path"] == "auto":
-                conf_["early_stage_online_vanilla_pg_path"] = (
-                    f"{rootdir_}/online/early_stage_policy.pt"
-                )
-
             if not Path(conf_["early_stage_online_vanilla_pg_path"]).exists():
                 raise ValueError("early_stage_online_vanilla_pg_path does not exist.")
+            if not Path(conf_["early_stage_online_top1_pg_path"]).exists():
+                raise ValueError("early_stage_online_top1_pg_path does not exist.")
 
     else:
         for key_param in conf[key_param_name]:
@@ -166,32 +173,33 @@ def process(
 
             for random_seed in range(conf["n_random_seed"]):
                 conf_["random_seed"] = random_seed + conf["start_random_seed"]
+                n_cand_ = conf_['n_candidate_action_train']
+                late_stage_ = conf_['late_stage_optimality']
+                seed_ = conf_['random_seed']
 
-                rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
+                detailed_configs_ = f"n_candidate={n_cand_},late_stage={late_stage_},n_model={n_model_},n_output={n_out_},seed={seed_}"
 
                 if conf["early_stage_online_credit_assigned_pg_path"] == "auto":
                     conf_["early_stage_online_credit_assigned_pg_path"] = (
-                        f"{rootdir_}/online/early_stage_policy.pt"
+                        f"{rootdir}/online_early_stage/credit={'CA'}/{detailed_configs_}.pt"
+                    )
+                if conf["early_stage_online_vanilla_pg_path"] == "auto":
+                    conf_["early_stage_online_vanilla_pg_path"] = (
+                        f"{rootdir}/online_early_stage/credit={'ALL'}/{detailed_configs_}.pt"
+                    )
+                if conf["early_stage_online_top1_pg_path"] == "auto":
+                    conf_["early_stage_online_top1_pg_path"] = (
+                        f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                     )
 
-                if not Path(
-                    conf_["early_stage_online_credit_assigned_pg_path"]
-                ).exists():
+                if not Path(conf_["early_stage_online_credit_assigned_pg_path"]).exists():
                     raise ValueError(
                         "early_stage_online_credit_assigned_pg_path does not exist."
                     )
-
-                rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-
-                if conf["early_stage_online_vanilla_pg_path"] == "auto":
-                    conf_["early_stage_online_vanilla_pg_path"] = (
-                        f"{rootdir_}/online/early_stage_policy.pt"
-                    )
-
                 if not Path(conf_["early_stage_online_vanilla_pg_path"]).exists():
-                    raise ValueError(
-                        "early_stage_online_vanilla_pg_path does not exist."
-                    )
+                    raise ValueError("early_stage_online_vanilla_pg_path does not exist.")
+                if not Path(conf_["early_stage_online_top1_pg_path"]).exists():
+                    raise ValueError("early_stage_online_top1_pg_path does not exist.")
 
     performance_dict = defaultdict(list)
 
@@ -210,25 +218,25 @@ def process(
 
             for random_seed in range(conf["n_random_seed"]):
                 conf_["random_seed"] = random_seed + conf["start_random_seed"]
+                n_cand_ = conf_['n_candidate_action_train']
+                late_stage_ = conf_['late_stage_optimality']
+                n_model_ = conf_['n_moe_model']
+                n_out_ = conf_['n_output_action']
+                seed_ = conf_['random_seed']
 
-                if setting != "n_candidate_action_eval":
-                    rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},param={key_param},logging={'na'},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-                else:
-                    rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
+                detailed_configs_ = f"n_candidate={n_cand_},late_stage={late_stage_},n_model={n_model_},n_output={n_out_},seed={seed_}"
 
                 if conf["early_stage_online_credit_assigned_pg_path"] == "auto":
                     conf_["early_stage_online_credit_assigned_pg_path"] = (
-                        f"{rootdir_}/online/early_stage_policy.pt"
+                        f"{rootdir}/online_early_stage/credit={'CA'}/{detailed_configs_}.pt"
                     )
-
-                if setting != "n_candidate_action_eval":
-                    rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},param={key_param},logging={'na'},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-                else:
-                    rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-
                 if conf["early_stage_online_vanilla_pg_path"] == "auto":
                     conf_["early_stage_online_vanilla_pg_path"] = (
-                        f"{rootdir_}/online/early_stage_policy.pt"
+                        f"{rootdir}/online_early_stage/credit={'ALL'}/{detailed_configs_}.pt"
+                    )
+                if conf["early_stage_online_top1_pg_path"] == "auto":
+                    conf_["early_stage_online_top1_pg_path"] = (
+                        f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                     )
 
                 print(
@@ -245,19 +253,25 @@ def process(
     else:
         for random_seed in range(conf["n_random_seed"]):
             conf_["random_seed"] = random_seed + conf["start_random_seed"]
+            n_cand_ = conf_['n_candidate_action_train']
+            late_stage_ = conf_['late_stage_optimality']
+            n_model_ = conf_['n_moe_model']
+            n_out_ = conf_['n_output_action']
+            seed_ = conf_['random_seed']
 
-            rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'full'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
+            detailed_configs_ = f"n_candidate={n_cand_},late_stage={late_stage_},n_model={n_model_},n_output={n_out_},seed={seed_}"
 
             if conf["early_stage_online_credit_assigned_pg_path"] == "auto":
                 conf_["early_stage_online_credit_assigned_pg_path"] = (
-                    f"{rootdir_}/online/early_stage_policy.pt"
+                    f"{rootdir}/online_early_stage/credit={'CA'}/{detailed_configs_}.pt"
                 )
-
-            rootdir_ = f"{rootdir}/{experiment_name}/{experiment_name},logging={'na'},credit_assignment={'partial'},n_candidate_action_train={conf_['n_candidate_action_train']},seed={conf_['random_seed']}"
-
             if conf["early_stage_online_vanilla_pg_path"] == "auto":
                 conf_["early_stage_online_vanilla_pg_path"] = (
-                    f"{rootdir_}/online/early_stage_policy.pt"
+                    f"{rootdir}/online_early_stage/credit={'ALL'}/{detailed_configs_}.pt"
+                )
+            if conf["early_stage_online_top1_pg_path"] == "auto":
+                conf_["early_stage_online_top1_pg_path"] = (
+                    f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                 )
 
             print(
@@ -289,11 +303,11 @@ def main(cfg: DictConfig) -> None:
 
     conf = {
         "setting": cfg.setting.setting,
-        "data_size": cfg.setting.data_size,
         "n_action": cfg.setting.n_action,
         "n_output_action": cfg.setting.n_output_action,
         "n_candidate_action_train": cfg.setting.n_candidate_action_train,
         "n_candidate_action_eval": cfg.setting.n_candidate_action_eval,
+        "late_stage_optimality": cfg.setting.late_stage_optimality,
         "n_user": cfg.setting.n_user,
         "n_latent": cfg.setting.n_latent,
         "dim_context": cfg.setting.dim_context,
@@ -309,16 +323,17 @@ def main(cfg: DictConfig) -> None:
         "late_stage_neural_lr": cfg.model.late_stage_neural_lr,
         "online_vanilla_pg_lr": cfg.model.online_vanilla_pg_lr,
         "online_credit_assigned_pg_lr": cfg.model.online_credit_assigned_pg_lr,
+        "online_top1_pg_lr": cfg.model.online_top1_pg_lr,
         "credit_assignment_type": cfg.model.credit_assignment_type,
         "n_epoch": cfg.model.n_epoch,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
         "rootdir": cfg.logs.rootdir,
         "experiment_name": cfg.logs.experiment_name,
-        "early_stage_naive_cf_path": cfg.path.early_stage_naive_cf_path,  # unused
-        "late_stage_naive_cf_path": cfg.path.late_stage_naive_cf_path,  # unused
+        "use_wandb": cfg.logs.use_wandb,
         "early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
         "early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
+        "early_stage_online_top1_pg_path": cfg.path.early_stage_online_top1_pg_path,
     }
     process(conf)
 

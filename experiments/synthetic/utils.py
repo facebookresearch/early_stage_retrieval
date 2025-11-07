@@ -35,37 +35,41 @@ def assert_configuration(cfg: DictConfig) -> None:
     setting = cfg.setting.setting
     assert setting in [
         "default",
-        "n_action",
         "n_candidate_action_eval",
+        "n_output_action",
         "n_moe_model",
+        "late_stage_optimality",
     ]
-
-    n_action = cfg.setting.n_action
-    if setting != "n_action":
-        assert n_action in [1000, 2000, 5000, 10000]
-    else:
-        for value in n_action:
-            assert value in [1000, 2000, 5000, 10000]
 
     n_candidate_action_eval = cfg.setting.n_candidate_action_eval
     if setting != "n_candidate_action_eval":
-        assert n_candidate_action_eval in [10, 20, 50, 100]
+        assert n_candidate_action_eval in [5, 10, 15, 20]
     else:
         for value in n_candidate_action_eval:
             assert value in [10, 20, 50, 100]
 
-    n_output_action = cfg.setting.n_output_action
-    assert n_output_action in [1, 2, 5, 10]
-
     n_candidate_action_train = cfg.setting.n_candidate_action_train
     if not n_candidate_action_train == "auto":
-        assert n_candidate_action_train in [10, 20, 50, 100]
+        assert n_candidate_action_train == n_candidate_action_eval
+
+    n_output_action = cfg.setting.n_output_action
+    assert n_output_action in [1, 5]
+
+    n_moe_model = cfg.model.n_moe_model
+    assert n_moe_model in [1, 5]
+    assert n_moe_model <= n_output_action
+
+    late_stage_optimality = cfg.setting.late_stage_optimality
+    assert late_stage_optimality in ["anti", "uniform", "noisy", "optimal"]
+
+    credit_assignment_type = cfg.model.credit_assignment_type
+    assert credit_assignment_type in ["CA", "ALL", "TOP1"]
 
     n_user = cfg.setting.n_user
-    assert n_user in [100, 1000, 10000]
+    assert n_user == 1000
 
     n_latent = cfg.setting.n_latent
-    assert n_latent in [1, 5, 10, 50, 100]
+    assert n_latent == 1
 
     dim_context = cfg.setting.dim_context
     assert dim_context in [5, 10]
@@ -91,9 +95,6 @@ def assert_configuration(cfg: DictConfig) -> None:
     dim_model_emb = cfg.model.dim_model_emb
     assert dim_model_emb in [5, 10]
 
-    n_moe_model = cfg.model.n_moe_model
-    assert n_moe_model in [1, 2, 5, 10]
-
     early_stage_naive_cf_lr = cfg.model.early_stage_naive_cf_lr
     assert early_stage_naive_cf_lr >= 0
 
@@ -114,9 +115,6 @@ def assert_configuration(cfg: DictConfig) -> None:
 
     n_epochs_per_log = cfg.model.n_epochs_per_log
     assert n_epochs_per_log >= 1
-
-    credit_assignment_type = cfg.model.credit_assignment_type
-    assert credit_assignment_type in ["full", "partial", "none"]
 
     early_stage_naive_cf_path = cfg.path.early_stage_naive_cf_path
     if early_stage_naive_cf_path != "auto":

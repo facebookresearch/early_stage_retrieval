@@ -1,9 +1,9 @@
 setting: default
-data_size: 1000000
 n_action: 1000
-n_output_action: 10
-n_candidate_action_train: 100
-n_candidate_action_eval: 100
+n_output_action: 1
+n_candidate_action_train: 10
+n_candidate_action_eval: 10
+late_stage_optimality: optimal
 n_user: 1000
 n_latent: 1
 dim_context: 10
