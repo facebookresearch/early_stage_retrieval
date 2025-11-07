@@ -1,4 +1,5 @@
 .hydra/
-.log
 logs/
 wandb/
+.log
+.DS_Store
