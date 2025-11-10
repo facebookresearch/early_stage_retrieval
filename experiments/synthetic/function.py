@@ -163,7 +163,7 @@ def train_online_pg_policy(
             n_candidate_action_eval=n_candidate_action_eval,  #
             random_seed=random_seed,
             use_wandb=use_wandb,
-            experiment_name=f"Meta-ESR-{credit_assignment_type}",
+            experiment_name=f"Meta-ESR-{credit_assignment_type}-pos",  # added prefix
         )
     )
     return (

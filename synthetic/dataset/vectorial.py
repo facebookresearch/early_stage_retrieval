@@ -525,6 +525,10 @@ class VectorialRewardModel(BaseRewardModel):
         expected_reward, _ = self.expected(
             context=context, latent=latent, actions=actions
         )
+
+        # positive reward shift (softplus and const)
+        expected_reward = torch.log1p(torch.exp(expected_reward)) + 1.0
+
         reward_std = self._retrieve_reward_std(
             context=context,
             latent=latent,
