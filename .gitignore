@@ -3,3 +3,4 @@ logs/
 wandb/
 .log
 .DS_Store
+data/
