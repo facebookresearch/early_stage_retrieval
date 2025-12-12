@@ -4,6 +4,7 @@
 from .base import BaseModelLearner, BasePolicyLearner
 from .collaborative_filtering import CollaborativeFilteringLearner
 from .online_policy_learning import OnlinePolicyLearner
+from .online_policy_learning_kuairec import KuaiRecOnlinePolicyLearner
 
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "BaseModelLearner",
     "CollaborativeFilteringLearner",
     "OnlinePolicyLearner",
+    "KuaiRecOnlinePolicyLearner",
 ]

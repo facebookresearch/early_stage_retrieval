@@ -9,7 +9,7 @@ import hydra
 
 import torch
 
-from experiments.synthetic.function import (
+from experiments.synthetic.function_kuairec import (
     initialize_trainable_policy,
     save_logs,
     setup_data_generation_process,
@@ -24,14 +24,9 @@ from omegaconf import DictConfig
 
 
 def _process(
-    n_user: int,
-    n_action: int,
-    n_latent: int,
+    dataset_path: str,
     n_output_action: int,
     n_moe_model: int,
-    dim_context: int,
-    dim_action_emb: int,
-    reward_scaler: Union[int, float],
     late_stage_optimality: str,
     dim_model_emb: int,
     online_vanilla_pg_lr: Union[int, float],
@@ -53,13 +48,8 @@ def _process(
     reset_seed(base_random_seed)
 
     env = setup_data_generation_process(
-        n_user=n_user,
-        n_action=n_action,
-        n_latent=n_latent,
+        dataset_path=dataset_path,
         n_output_action=n_output_action,
-        dim_context=dim_context,
-        dim_action_emb=dim_action_emb,
-        reward_scaler=reward_scaler,
         device=device,
         random_seed=base_random_seed,
     )
@@ -123,6 +113,9 @@ def process(
         and conf["n_candidate_action_train"] == "auto"
     ):
         conf_["n_candidate_action_train"] = conf["n_candidate_action_eval"]
+
+    if conf["dataset_path"] == "auto":
+        conf_["dataset_path"] = f"{conf['rootdir']}/data/kuairec_small_matrix.csv"
 
     if setting != "default":
         key_param_name = conf["setting"]

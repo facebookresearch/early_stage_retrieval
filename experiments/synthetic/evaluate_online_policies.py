@@ -4,7 +4,7 @@ from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
 from time import time
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Optional
 
 import hydra
 import pandas as pd
@@ -41,6 +41,8 @@ def _process(
     random_seed: int,
     early_stage_online_credit_assigned_pg_path: str,
     early_stage_online_vanilla_pg_path: str,
+    early_stage_online_top1_pg_path: str,
+    early_stage_online_vanilla_pg_replacement_path: Optional[str] = None,
     **kwargs,
 ):
     reset_seed(base_random_seed)
@@ -76,15 +78,35 @@ def _process(
         device=device,
         random_seed=random_seed,
     )
+    early_stage_top1_pg_policy = load_pg_policy(
+        env=env,
+        dim_model_emb=dim_model_emb,
+        early_stage_model_path=early_stage_online_top1_pg_path,
+        device=device,
+        random_seed=random_seed,
+    )
 
     algorithms = [
         "online-credit-assigned",
         "online-vanilla",
+        "online-top1",
     ]
     early_stage_policies = [
         early_stage_credit_assigned_pg_policy,
         early_stage_vanilla_pg_policy,
+        early_stage_top1_pg_policy,
     ]
+
+    if early_stage_online_vanilla_pg_replacement_path is not None:
+        early_stage_vanilla_replacement_policy = load_pg_policy(
+            env=env,
+            dim_model_emb=dim_model_emb,
+            early_stage_model_path=early_stage_online_vanilla_pg_replacement_path,
+            device=device,
+            random_seed=random_seed,
+        )
+        algorithms = algorithms + ["online-vanilla-swr"]
+        early_stage_policies = early_stage_policies + [early_stage_vanilla_replacement_policy]
 
     performance = {}
     for i, algo in enumerate(algorithms):
@@ -151,6 +173,11 @@ def process(
                     f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                 )
 
+            if conf["early_stage_online_vanilla_pg_replacement_path"] == "auto" and conf["is_vanilla_replacement"]:
+                conf_["early_stage_online_top1_pg_path"] = (
+                    f"{rootdir}/online_early_stage/credit={'ALL-SwR'}/{detailed_configs_}.pt"
+                )
+
             if not Path(conf_["early_stage_online_credit_assigned_pg_path"]).exists():
                 raise ValueError(
                     "early_stage_online_credit_assigned_pg_path does not exist."
@@ -159,6 +186,8 @@ def process(
                 raise ValueError("early_stage_online_vanilla_pg_path does not exist.")
             if not Path(conf_["early_stage_online_top1_pg_path"]).exists():
                 raise ValueError("early_stage_online_top1_pg_path does not exist.")
+            if conf["is_vanilla_replacement"] and not Path(conf_["early_stage_online_vanilla_pg_replacement_path"]).exists():
+                raise ValueError("early_stage_online_vanilla_pg_replacement_path does not exist.")
 
     else:
         for key_param in conf[key_param_name]:
@@ -191,6 +220,10 @@ def process(
                     conf_["early_stage_online_top1_pg_path"] = (
                         f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                     )
+                if conf["early_stage_online_vanilla_pg_replacement_path"] == "auto" and conf["is_vanilla_replacement"]:
+                    conf_["early_stage_online_top1_pg_path"] = (
+                        f"{rootdir}/online_early_stage/credit={'ALL-SwR'}/{detailed_configs_}.pt"
+                    )
 
                 if not Path(conf_["early_stage_online_credit_assigned_pg_path"]).exists():
                     raise ValueError(
@@ -200,6 +233,8 @@ def process(
                     raise ValueError("early_stage_online_vanilla_pg_path does not exist.")
                 if not Path(conf_["early_stage_online_top1_pg_path"]).exists():
                     raise ValueError("early_stage_online_top1_pg_path does not exist.")
+                if conf["is_vanilla_replacement"] and not Path(conf_["early_stage_online_vanilla_pg_replacement_path"]).exists():
+                    raise ValueError("early_stage_online_vanilla_pg_replacement_path does not exist.")
 
     performance_dict = defaultdict(list)
 
@@ -238,6 +273,10 @@ def process(
                     conf_["early_stage_online_top1_pg_path"] = (
                         f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                     )
+                if conf["early_stage_online_vanilla_pg_replacement_path"] == "auto" and conf["is_vanilla_replacement"]:
+                    conf_["early_stage_online_top1_pg_path"] = (
+                        f"{rootdir}/online_early_stage/credit={'ALL-SwR'}/{detailed_configs_}.pt"
+                    )
 
                 print(
                     f"Setting: {setting}, Key Param: {key_param}, Random Seed: {random_seed}/{conf['n_random_seed']}"
@@ -273,6 +312,10 @@ def process(
                 conf_["early_stage_online_top1_pg_path"] = (
                     f"{rootdir}/online_early_stage/credit={'TOP1'}/{detailed_configs_}.pt"
                 )
+            if conf["early_stage_online_vanilla_pg_replacement_path"] == "auto" and conf["is_vanilla_replacement"]:
+                    conf_["early_stage_online_top1_pg_path"] = (
+                        f"{rootdir}/online_early_stage/credit={'ALL-SwR'}/{detailed_configs_}.pt"
+                    )
 
             print(
                 f"Setting: {setting}, Key Param: {'None'}, Random Seed: {random_seed}/{conf['n_random_seed']}"
@@ -325,15 +368,18 @@ def main(cfg: DictConfig) -> None:
         "online_credit_assigned_pg_lr": cfg.model.online_credit_assigned_pg_lr,
         "online_top1_pg_lr": cfg.model.online_top1_pg_lr,
         "credit_assignment_type": cfg.model.credit_assignment_type,
+        "is_vanilla_repalcement": cfg.model.is_vanilla_replacement,
         "n_epoch": cfg.model.n_epoch,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
         "rootdir": cfg.logs.rootdir,
         "experiment_name": cfg.logs.experiment_name,
         "use_wandb": cfg.logs.use_wandb,
+        "dataset_path": cfg.path.dataset_path,
         "early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
         "early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
         "early_stage_online_top1_pg_path": cfg.path.early_stage_online_top1_pg_path,
+        "early_stage_online_vanilla_pg_replacement_path": cfg.path.early_stage_online_vanilla_pg_replacement_path,
     }
     process(conf)
 

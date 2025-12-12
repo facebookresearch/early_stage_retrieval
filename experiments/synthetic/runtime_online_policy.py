@@ -190,15 +190,18 @@ def main(cfg: DictConfig) -> None:
         "online_credit_assigned_pg_lr": cfg.model.online_credit_assigned_pg_lr,
         "online_top1_pg_lr": cfg.model.online_top1_pg_lr,
         "credit_assignment_type": cfg.model.credit_assignment_type,
+        "is_vanilla_replacement": cfg.model.is_vanilla_replacement,
         "n_epoch": cfg.model.n_epoch,
         "n_steps_per_epoch": cfg.model.n_steps_per_epoch,
         "n_epochs_per_log": cfg.model.n_epochs_per_log,
         "rootdir": cfg.logs.rootdir,
         "experiment_name": cfg.logs.experiment_name,
         "use_wandb": cfg.logs.use_wandb,
+        "dataset_path": cfg.path.dataset_path,
         "early_stage_online_credit_assigned_pg_path": cfg.path.early_stage_online_credit_assigned_pg_path,
         "early_stage_online_vanilla_pg_path": cfg.path.early_stage_online_vanilla_pg_path,
         "early_stage_online_top1_pg_path": cfg.path.early_stage_online_top1_pg_path,
+        "early_stage_online_vanilla_pg_replacement_path": cfg.path.early_stage_online_vanilla_pg_replacement_path,
     }
     process(conf)
 

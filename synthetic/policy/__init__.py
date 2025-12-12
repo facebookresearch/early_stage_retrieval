@@ -1,7 +1,11 @@
 # pyre-unsafe
 """Policy module."""
 
-from .action_set import BaseActionSet, VectorialActionSet
+from .action_set import (
+    BaseActionSet, 
+    SimpleActionSet,
+    VectorialActionSet,
+)
 from .base import (
     BaseEarlyStagePolicy,
     BaseJointPolicy,
@@ -35,6 +39,7 @@ from .uniform import (
 
 __all__ = [
     "BaseActionSet",
+    "SimpleActionSet",
     "VectorialActionSet",
     "BaseEarlyStagePolicy",
     "BaseJointPolicy",
