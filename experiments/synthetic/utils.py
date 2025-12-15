@@ -56,7 +56,7 @@ def assert_configuration(cfg: DictConfig) -> None:
     assert n_output_action in [1, 5]
 
     n_moe_model = cfg.model.n_moe_model
-    assert n_moe_model in [1, 5]
+    assert n_moe_model in [1, 2, 5, 10]
     assert n_moe_model <= n_candidate_action_train
 
     late_stage_optimality = cfg.setting.late_stage_optimality
