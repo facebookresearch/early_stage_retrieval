@@ -552,13 +552,19 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
             assert len(n_candidate_per_model) == n_model
             assert sum(n_candidate_per_model) == n_candidate_action
 
-        if require_grad_model_id is None:
+        if require_grad_model_id is None and n_model > 1:
             actions_expanded = actions.unsqueeze(0).expand(n_model, -1, -1)
             a = torch.gather(logits, 1, actions_expanded)
             A = torch.logsumexp(logits, dim=-1)
 
             log_prob = a - A.unsqueeze(dim=-1)
             log_prob = (n_candidate_per_model.view(-1, 1, 1) * log_prob).sum(dim=0)
+
+        elif require_grad_model_id is None and n_model == 1:
+            logits = logits[0]
+            a = torch.gather(logits, 1, actions)
+            A = torch.logsumexp(logits, dim=-1)
+            log_prob = a - A.unsqueeze(dim=-1)
 
         if require_grad_model_id is not None:
             raise NotImplementedError()
@@ -641,13 +647,19 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
                 assert len(n_candidate_per_model) == n_model
                 assert sum(n_candidate_per_model) == n_candidate_action
 
-            if require_grad_model_id is None:
+            if require_grad_model_id is None and n_model > 1:
                 actions_expanded = actions.unsqueeze(0).expand(n_model, -1, -1)
                 a = torch.gather(logits, 2, actions_expanded)
                 A = torch.logsumexp(logits, dim=-1)
 
                 log_prob = a - A.unsqueeze(dim=-1)
                 log_prob = (n_candidate_per_model.view(-1, 1, 1) * log_prob).sum(dim=0)
+
+            elif require_grad_model_id is None and n_model == 1:
+                logits = logits[0]
+                a = torch.gather(logits, 1, actions)
+                A = torch.logsumexp(logits, dim=-1)
+                log_prob = a - A.unsqueeze(dim=-1)
 
         elif is_vanilla_replacement_gradient:
             if n_candidate_per_model is None:
@@ -979,6 +991,7 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
 
         else:
             logits = self.base_model(context=context, context_id=context_id)
+            n_model = logits.shape[0]
 
             log_prob = self._log_prob_given_logits_and_actions(
                 logits=logits,
@@ -992,7 +1005,7 @@ class BaselineEarlyStagePolicy(BaseEarlyStagePolicy):
                 is_vanilla_replacement_gradient=is_vanilla_replacement,
             )
 
-            if is_top1:
+            if is_top1 and n_model > 1:
                 # this is not the exact probability, just a proxy (can be exact only in the single logit model case)
                 prob = (log_prob.clone().detach() / n_candidate_action).exp()  # non-differential
             else:
