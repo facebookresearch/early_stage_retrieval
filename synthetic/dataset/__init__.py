@@ -8,7 +8,7 @@ from .base import (
     BaseRewardModel,
 )
 from .dataset import LoggedDataset
-from .meta import SyntheticDataGenerator
+from .meta import SyntheticDataGenerator, KuaiRecDataGenerator
 from .vectorial import (
     VectorialContextSampler,
     VectorialLatentSampler,
@@ -18,6 +18,7 @@ from .vectorial import (
 __all__ = [
     "BaseDataGenerator",
     "SyntheticDataGenerator",
+    "KuaiRecDataGenerator",
     "LoggedDataset",
     "BaseContextSampler",
     "BaseLatentSampler",

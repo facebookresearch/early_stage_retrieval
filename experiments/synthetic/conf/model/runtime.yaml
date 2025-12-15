@@ -7,6 +7,6 @@ online_credit_assigned_pg_lr: 1e-2
 online_top1_pg_lr: 1e-2
 credit_assignment_type: CA
 is_vanilla_replacement: False
-n_epoch: 50000
-n_steps_per_epoch: 10
-n_epochs_per_log: 100
+n_epoch: 1
+n_steps_per_epoch: 1000
+n_epochs_per_log: 1

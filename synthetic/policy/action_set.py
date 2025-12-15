@@ -45,6 +45,44 @@ class BaseActionSet(ABC):
 
         """
         raise NotImplementedError()
+    
+
+@dataclass
+class SimpleActionSet(BaseActionSet):
+    """Vectorial action set.
+
+    Input
+    ------
+    n_action: int
+        The number of actions.
+
+    dim_action_emb: int
+        The dimension of the action.
+
+    action_embs: Optional[torch.Tensor], shape (n_action, dim_action_emb)
+        The action embs.
+
+    device: Optional[torch.device]
+        The device to use.
+
+    random_seed: Optional[int]
+        The random seed to use.
+
+    """
+
+    n_action: int
+    device: Optional[torch.device] = None
+    random_seed: Optional[int] = None
+
+    def __post_init__(self):
+        pass
+
+    def retrieve_embeddings(
+        self,
+        actions: torch.Tensor,
+    ) -> torch.Tensor:
+        """API consistency."""
+        pass
 
 
 @dataclass
