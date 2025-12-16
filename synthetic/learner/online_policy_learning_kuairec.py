@@ -9,7 +9,7 @@ import wandb
 import torch
 
 from synthetic.dataset import (
-    BaseDataGenerator,
+    KuaiRecDataGenerator,
 )
 from synthetic.policy import (
     BaseEarlyStagePolicy,
@@ -22,12 +22,12 @@ from .base import BasePolicyLearner
 
 
 @dataclass
-class OnlinePolicyLearner(BasePolicyLearner):
+class KuaiRecOnlinePolicyLearner(BasePolicyLearner):
     """Training procedure of on-policy learning.
 
     Input
     ------
-    env: BaseDataGenerator
+    env: KuaiRecDataGenerator
         The data generation environment.
 
     early_stage_policy: BaseEarlyStagePolicy
@@ -59,7 +59,7 @@ class OnlinePolicyLearner(BasePolicyLearner):
 
     """
 
-    env: BaseDataGenerator
+    env: KuaiRecDataGenerator
     early_stage_policy: BaseEarlyStagePolicy
     target_late_stage_policy: BaseLateStagePolicy
     eval_late_stage_policy: BaseLateStagePolicy
@@ -298,46 +298,31 @@ class OnlinePolicyLearner(BasePolicyLearner):
                     n_candidate_action_ = n_candidate_action_train
                     n_candidate_per_model_ = None
 
-                    context_, context_id_ = (
-                        self.env.context_sampler.sample(  # pyre-ignore
-                            batch_size
-                        )
-                    )
-                    latent_, latent_id_ = self.env.latent_sampler.sample(  # pyre-ignore
-                        batch_size
-                    )
-
-                    factual_rewards_ = self.env.retrieve_factual_rewards(  # pyre-ignore
-                        context_id=context_id_,
-                        latent_id=latent_id_,
-                    )
+                    context_id_ = torch.randint(self.env.n_users, (batch_size, ))
+                    latent_id_ = torch.zeros((batch_size, ))  # API-consistency
+                    factual_rewards_ = self.env.expected_rewards[context_id_]
 
                     with torch.no_grad():
                         candidate_actions_ = early_stage_policy.sample(
-                            context=context_,
                             context_id=context_id_,
                             n_candidate_action=n_candidate_action_,
                             n_candidate_per_model=n_candidate_per_model_,
                         )
                         action_ids_ = self.target_late_stage_policy.sample(
-                            context=context_,
                             context_id=context_id_,
-                            latent=latent_,
                             latent_id=latent_id_,
                             candidate_actions=candidate_actions_,
                             factual_rewards=factual_rewards_,
                             n_output_action=self.env.n_output_action,  # pyre-ignore
                         )
 
-                    reward_, agg_reward_ = self.env.reward_model.sample(  # pyre-ignore
-                        context=context_,
-                        latent=latent_,
-                        actions=action_ids_,
+                    reward_, agg_reward_ = self.env.sample_reward(  # pyre-ignore
+                        context_id=context_id_,
+                        action_ids=action_ids_,
                     )
 
                     early_stage_prob_, early_stage_log_prob_ = (
                         early_stage_policy.calc_prob_given_actions(
-                            context=context_,
                             context_id=context_id_,
                             actions=action_ids_,
                             candidate_actions=candidate_actions_,

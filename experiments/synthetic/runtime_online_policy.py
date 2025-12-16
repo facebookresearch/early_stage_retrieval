@@ -3,7 +3,7 @@
 from copy import deepcopy
 from pathlib import Path
 from time import time
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 import hydra
 
@@ -11,9 +11,8 @@ import torch
 
 from experiments.synthetic.function import (
     initialize_trainable_policy,
-    save_logs,
     setup_data_generation_process,
-    train_online_pg_policy,
+    runtime_online_pg_policy,
 )
 from experiments.synthetic.utils import (
     assert_configuration,
@@ -32,19 +31,16 @@ def _process(
     dim_context: int,
     dim_action_emb: int,
     reward_scaler: Union[int, float],
-    late_stage_optimality: str,
     dim_model_emb: int,
     online_vanilla_pg_lr: Union[int, float],
     online_credit_assigned_pg_lr: Union[int, float],
     online_top1_pg_lr: Union[int, float],
     credit_assignment_type: str,
-    is_vanilla_replacement: bool,
     n_epoch: int,
+    n_steps_per_epoch: int,
     n_epochs_per_log: int,
     n_candidate_action_train: int,
     n_candidate_action_eval: int,
-    rootdir: str,
-    use_wandb: bool,
     device: torch.device,
     base_random_seed: int,
     random_seed: int,
@@ -80,33 +76,26 @@ def _process(
         device=device,
         random_seed=random_seed,
     )
-    online_early_stage_policy, online_pg_training_logs = train_online_pg_policy(
+
+    start = time()
+
+    runtime_online_pg_policy(
         env=env,
         early_stage_policy=online_early_stage_policy,
         early_stage_lr=early_stage_lr,
-        late_stage_optimality=late_stage_optimality,
         credit_assignment_type=credit_assignment_type,
-        is_vanilla_replacement=is_vanilla_replacement,
         n_epoch=n_epoch,
+        n_steps_per_epoch=n_steps_per_epoch,
         n_epochs_per_log=n_epochs_per_log,
         n_candidate_action_train=n_candidate_action_train,
         n_candidate_action_eval=n_candidate_action_eval,
         device=device,
         random_seed=random_seed,
-        use_wandb=use_wandb,
+        use_wandb=False,
     )
-    save_logs(
-        rootdir=rootdir,
-        n_moe_model=n_moe_model,
-        n_output_action=n_output_action,
-        late_stage_optimality=late_stage_optimality,
-        credit_assignment_type=credit_assignment_type,
-        is_vanilla_replacement=is_vanilla_replacement,
-        n_candidate_action_train=n_candidate_action_train,
-        random_seed=random_seed,
-        trained_online_pg_early_stage_policy=online_early_stage_policy,
-        online_pg_training_logs=online_pg_training_logs,
-    )
+    
+    finish = time()
+    return finish - start
 
 
 def process(
@@ -137,22 +126,36 @@ def process(
             ):
                 conf_["n_candidate_action_train"] = key_param
 
+            detailed_configs_ = f"n_candidate={conf_['n_candidate_action_train']},late_stage={conf_['late_stage_optimality']},n_model={conf_['n_moe_model']},n_output={conf_['n_output_action']}"
+            online_pg_runtime_dir = Path(f"{conf_['rootdir']}/online_early_stage/training_process/credit={conf_['credit_assignment_type']}/runtime")
+            Path(online_pg_runtime_dir).mkdir(parents=True, exist_ok=True)
+
+            runtime_logs = torch.zeros((conf["n_random_seed"]))
             for random_seed in range(conf["n_random_seed"]):
                 conf_["random_seed"] = random_seed + conf["start_random_seed"]
 
                 print(
                     f"Setting: {setting}, Key Param: {key_param}, Random Seed: {random_seed}/{conf['n_random_seed']}"
                 )
-                _process(**conf_)
+                runtime_logs[random_seed] = _process(**conf_)
+
+            torch.save(runtime_logs, f"{online_pg_runtime_dir}/{detailed_configs_}.pt")
 
     else:
+        detailed_configs_ = f"n_candidate={conf_['n_candidate_action_train']},late_stage={conf_['late_stage_optimality']},n_model={conf_['n_moe_model']},n_output={conf_['n_output_action']}"
+        online_pg_runtime_dir = Path(f"{conf_['rootdir']}/online_early_stage/training_process/credit={conf_['credit_assignment_type']}/runtime")
+        Path(online_pg_runtime_dir).mkdir(parents=True, exist_ok=True)
+
+        runtime_logs = torch.zeros((conf["n_random_seed"]))
         for random_seed in range(conf["n_random_seed"]):
             conf_["random_seed"] = random_seed + conf["start_random_seed"]
 
             print(
                 f"Setting: {setting}, Key Param: {'None'}, Random Seed: {random_seed}/{conf['n_random_seed']}"
             )
-            _process(**conf_)
+            runtime_logs[random_seed] = _process(**conf_)
+
+        torch.save(runtime_logs, f"{online_pg_runtime_dir}/{detailed_configs_}.pt")
 
 
 @hydra.main(config_path="conf/", config_name="config")

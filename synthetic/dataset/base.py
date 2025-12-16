@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 import torch
 
-from early_stage_retrieval.synthetic.policy import (
+from synthetic.policy import (
     BaseEarlyStagePolicy,
     BaseLateStagePolicy,
 )

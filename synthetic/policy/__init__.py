@@ -1,7 +1,11 @@
 # pyre-unsafe
 """Policy module."""
 
-from .action_set import BaseActionSet, VectorialActionSet
+from .action_set import (
+    BaseActionSet, 
+    SimpleActionSet,
+    VectorialActionSet,
+)
 from .base import (
     BaseEarlyStagePolicy,
     BaseJointPolicy,
@@ -26,7 +30,6 @@ from .policy import (
     BaselineLateStagePolicy,
     BaselineSingleStagePolicy,
 )
-from .subset_selection import GreedySubsetEarlyStagePolicy
 from .uniform import (
     UniformEarlyStagePolicy,
     UniformLateStagePolicy,
@@ -36,6 +39,7 @@ from .uniform import (
 
 __all__ = [
     "BaseActionSet",
+    "SimpleActionSet",
     "VectorialActionSet",
     "BaseEarlyStagePolicy",
     "BaseJointPolicy",
@@ -56,5 +60,4 @@ __all__ = [
     "OptimalSingleStagePolicy",
     "OracleSoftmaxEarlyStagePolicy",
     "OracleSoftmaxLateStagePolicy",
-    "GreedySubsetEarlyStagePolicy",
 ]

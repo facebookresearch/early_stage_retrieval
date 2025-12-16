@@ -1,18 +1,15 @@
 """Functions called in the experiment pyfiles."""
 
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import torch
 
 from synthetic.dataset import (
-    SyntheticDataGenerator,
-    VectorialContextSampler,
-    VectorialLatentSampler,
-    VectorialRewardModel,
+    KuaiRecDataGenerator,
 )
 from synthetic.learner import (
-    OnlinePolicyLearner,
+    KuaiRecOnlinePolicyLearner,
 )
 from synthetic.policy import (
     BaseEarlyStagePolicy,
@@ -26,60 +23,25 @@ from synthetic.policy import (
     UniformEarlyStagePolicy,
     UniformLateStagePolicy,
     OracleSoftmaxLateStagePolicy,
-    VectorialActionSet,
+    SimpleActionSet,
 )
 
 def setup_data_generation_process(
-    n_user: int,
-    n_action: int,
-    n_latent: int,
+    dataset_path: str,
     n_output_action: int,
-    dim_context: int,
-    dim_action_emb: int,
-    reward_scaler: Union[int, float],
     device: torch.device,
     random_seed: int,
-) -> SyntheticDataGenerator:
-    context_sampler = VectorialContextSampler(
-        is_discrete=True,
-        n_discrete_context=n_user,
-        dim_context=dim_context,
-        device=device,
-        random_seed=random_seed,
-    )
-    action_set = VectorialActionSet(
-        n_action=n_action,
-        dim_action_emb=dim_action_emb,
-        device=device,
-        random_seed=random_seed,
-    )
-    latent_sampler = VectorialLatentSampler(
-        is_discrete=True,
-        n_discrete_latent=n_latent,
-        dim_context=context_sampler.dim_context,
-        dim_action_emb=action_set.dim_action_emb,
-        device=device,
-        random_seed=random_seed,
-    )
-    reward_model = VectorialRewardModel(
-        context_sampler=context_sampler,
-        action_set=action_set,
+) -> KuaiRecDataGenerator:
+    datagen = KuaiRecDataGenerator(
+        dataset_path=dataset_path,
         n_output_action=n_output_action,
-        reward_scaler=reward_scaler,
-        device=device,
         random_seed=random_seed,
-    )
-    datagen = SyntheticDataGenerator(
-        action_set=action_set,
-        context_sampler=context_sampler,
-        latent_sampler=latent_sampler,
-        reward_model=reward_model,
     )
     return datagen
 
 
 def evaluate_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     early_stage_policy: BaseEarlyStagePolicy,
     late_stage_policy: BaseLateStagePolicy,
     is_deterministic_early_stage: bool,
@@ -99,7 +61,7 @@ def evaluate_policy(
 
 
 def train_online_pg_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     early_stage_policy: BaselineEarlyStagePolicy,
     early_stage_lr: float,
     late_stage_optimality: str,
@@ -141,7 +103,7 @@ def train_online_pg_policy(
             random_seed=random_seed,
         )
 
-    online_pg_learner = OnlinePolicyLearner(
+    online_pg_learner = KuaiRecOnlinePolicyLearner(
         early_stage_policy=early_stage_policy,
         target_late_stage_policy=late_stage_policy,
         eval_late_stage_policy=late_stage_policy,
@@ -170,7 +132,7 @@ def train_online_pg_policy(
             n_candidate_action_eval=n_candidate_action_eval,  #
             random_seed=random_seed,
             use_wandb=use_wandb,
-            experiment_name=f"Meta-ESR-{credit_assignment_type_}-pos",  # added prefix
+            experiment_name=f"KuaiRec-ESR-{credit_assignment_type_}",  # added prefix
         )
     )
     return (
@@ -179,7 +141,7 @@ def train_online_pg_policy(
     )
 
 def runtime_online_pg_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     early_stage_policy: BaselineEarlyStagePolicy,
     early_stage_lr: float,
     credit_assignment_type: str,
@@ -200,7 +162,7 @@ def runtime_online_pg_policy(
         device=device,
         random_seed=random_seed,
     )
-    online_pg_learner = OnlinePolicyLearner(
+    online_pg_learner = KuaiRecOnlinePolicyLearner(
         early_stage_policy=early_stage_policy,
         target_late_stage_policy=late_stage_policy,
         eval_late_stage_policy=late_stage_policy,
@@ -224,7 +186,7 @@ def runtime_online_pg_policy(
             n_candidate_action_eval=n_candidate_action_eval,  #
             random_seed=random_seed,
             use_wandb=use_wandb,
-            experiment_name=f"Meta-ESR-{credit_assignment_type}-runtime",  # added prefix
+            experiment_name=f"KuaiRec-ESR-{credit_assignment_type}-runtime",  # added prefix
         )
     )
 
@@ -243,14 +205,14 @@ def save_logs(
 ) -> None:
     detailed_configs_ = f"n_candidate={n_candidate_action_train},late_stage={late_stage_optimality},n_model={n_moe_model},n_output={n_output_action},seed={random_seed}"
 
-    online_pg_dir = Path(f"{rootdir}/online_early_stage/credit={credit_assignment_type}")
-    online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/credit={credit_assignment_type}")
+    online_pg_dir = Path(f"{rootdir}/online_early_stage/KuaiRec,credit={credit_assignment_type}")
+    online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/KuaiRec,credit={credit_assignment_type}")
 
     online_pg_dir.mkdir(parents=True, exist_ok=True)
     online_pg_log_dir.mkdir(parents=True, exist_ok=True)
 
     if trained_online_pg_early_stage_policy is not None:
-        online_pg_dir = Path(f"{rootdir}/online_early_stage/credit={credit_assignment_type}")
+        online_pg_dir = Path(f"{rootdir}/online_early_stage/KuaiRec,credit={credit_assignment_type}")
         online_pg_dir.mkdir(parents=True, exist_ok=True)
 
         online_pg_early_stage_policy_path = online_pg_dir / f"{detailed_configs_}.pt"
@@ -264,9 +226,9 @@ def save_logs(
         for key in online_pg_training_logs.keys():
 
             if credit_assignment_type == "ALL" and is_vanilla_replacement:
-                online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/credit={'ALL-SwR'}/{key}")
+                online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/KuaiRec,credit={'ALL-SwR'}/{key}")
             else:
-                online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/credit={credit_assignment_type}/{key}")
+                online_pg_log_dir = Path(f"{rootdir}/online_early_stage/training_process/KuaiRec,credit={credit_assignment_type}/{key}")
 
             online_pg_log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -277,33 +239,33 @@ def save_logs(
 
 
 def initialize_trainable_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     dim_model_emb: int,
     n_moe_model: int,
     device: torch.device,
     random_seed: int,
 ) -> Tuple[BaselineEarlyStagePolicy, BaselineLateStagePolicy]:
     early_stage_base_model = EarlyStageTwoTowerModel(
-        n_context=env.context_sampler.n_discrete_context,
-        n_action=env.action_set.n_action,
+        n_context=env.n_users,
+        n_action=env.n_items,
         dim_emb=dim_model_emb,
         n_model=n_moe_model,
     )
     trainable_early_stage_policy = BaselineEarlyStagePolicy(
         base_model=early_stage_base_model,
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         device=device,
         random_seed=random_seed,
     )
     late_stage_base_model = LateStageNeuralModel(
-        n_context=env.context_sampler.n_discrete_context,
-        n_latent=env.latent_sampler.n_discrete_latent,
-        n_action=env.action_set.n_action,
+        n_context=env.n_users,
+        n_latent=1,
+        n_action=env.n_items,  
         dim_emb=dim_model_emb,
     )
     trainable_late_stage_policy = BaselineLateStagePolicy(
         base_model=late_stage_base_model,
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         device=device,
         random_seed=random_seed,
     )
@@ -311,17 +273,17 @@ def initialize_trainable_policy(
 
 
 def initialize_optimal_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     device: torch.device,
     random_seed: int,
 ) -> Tuple[OptimalEarlyStagePolicy, OptimalLateStagePolicy]:
     early_stage_policy_optimal = OptimalEarlyStagePolicy(
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         device=device,
         random_seed=random_seed,
     )
     late_stage_policy_optimal = OptimalLateStagePolicy(
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         device=device,
         random_seed=random_seed,
     )
@@ -329,17 +291,17 @@ def initialize_optimal_policy(
 
 
 def initialize_uniform_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     device: torch.device,
     random_seed: int,
 ) -> Tuple[UniformEarlyStagePolicy, UniformLateStagePolicy]:
     uniform_early_stage_policy = UniformEarlyStagePolicy(
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         device=device,
         random_seed=random_seed,
     )
     uniform_late_stage_policy = UniformLateStagePolicy(
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         device=device,
         random_seed=random_seed,
     )
@@ -347,12 +309,12 @@ def initialize_uniform_policy(
 
 
 def initialize_noisy_optimal_late_stage_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     device: torch.device,
     random_seed: int,
 ) -> Tuple[OracleSoftmaxLateStagePolicy]:
     noisy_late_stage_policy = OracleSoftmaxLateStagePolicy(
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         inverse_temperature=1.0,
         device=device,
         random_seed=random_seed,
@@ -361,12 +323,12 @@ def initialize_noisy_optimal_late_stage_policy(
 
 
 def initialize_anti_optimal_late_stage_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     device: torch.device,
     random_seed: int,
 ) -> Tuple[OptimalLateStagePolicy]:
     anti_late_stage_policy = OptimalLateStagePolicy(
-        action_set=env.action_set,
+        action_set=SimpleActionSet(n_action=env.n_items),  #
         is_anti_optimal=True,
         device=device,
         random_seed=random_seed,
@@ -375,7 +337,7 @@ def initialize_anti_optimal_late_stage_policy(
 
 
 def load_naive_cf_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     dim_model_emb: int,
     early_stage_naive_cf_path: str,
     device: torch.device,
@@ -395,7 +357,7 @@ def load_naive_cf_policy(
 
 
 def load_pg_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     dim_model_emb: int,
     early_stage_model_path: str,
     device: torch.device,
@@ -415,7 +377,7 @@ def load_pg_policy(
 
 
 def load_late_stage_cf_policy(
-    env: SyntheticDataGenerator,
+    env: KuaiRecDataGenerator,
     dim_model_emb: int,
     late_stage_naive_cf_path: str,
     device: torch.device,
