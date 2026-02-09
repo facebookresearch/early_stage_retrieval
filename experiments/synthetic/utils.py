@@ -43,17 +43,17 @@ def assert_configuration(cfg: DictConfig) -> None:
 
     n_candidate_action_eval = cfg.setting.n_candidate_action_eval
     if setting != "n_candidate_action_eval":
-        assert n_candidate_action_eval in [5, 10, 15, 20]
+        assert n_candidate_action_eval in [5, 10, 20, 50, 100, 200]
     else:
         for value in n_candidate_action_eval:
-            assert value in [10, 20, 50, 100]
+            assert value in [5, 10, 20, 50, 100, 200]
 
     n_candidate_action_train = cfg.setting.n_candidate_action_train
     if not n_candidate_action_train == "auto":
         assert n_candidate_action_train == n_candidate_action_eval
 
     n_output_action = cfg.setting.n_output_action
-    assert n_output_action in [1, 5]
+    assert n_output_action in [1, 5, 10]
 
     n_moe_model = cfg.model.n_moe_model
     assert n_moe_model in [1, 2, 5, 10]
