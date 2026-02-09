@@ -36,6 +36,7 @@ def _process(
     online_credit_assigned_pg_lr: Union[int, float],
     online_top1_pg_lr: Union[int, float],
     credit_assignment_type: str,
+    is_vanilla_replacement: bool,
     n_epoch: int,
     n_steps_per_epoch: int,
     n_epochs_per_log: int,
@@ -84,6 +85,7 @@ def _process(
         early_stage_policy=online_early_stage_policy,
         early_stage_lr=early_stage_lr,
         credit_assignment_type=credit_assignment_type,
+        is_vanilla_replacement=is_vanilla_replacement,
         n_epoch=n_epoch,
         n_steps_per_epoch=n_steps_per_epoch,
         n_epochs_per_log=n_epochs_per_log,
@@ -126,8 +128,9 @@ def process(
             ):
                 conf_["n_candidate_action_train"] = key_param
 
+            is_vanilla_flg_ = "-SwR" if conf_['credit_assignment_type'] == "ALL" and conf_["is_vanilla_replacement"] else ""
             detailed_configs_ = f"n_candidate={conf_['n_candidate_action_train']},late_stage={conf_['late_stage_optimality']},n_model={conf_['n_moe_model']},n_output={conf_['n_output_action']}"
-            online_pg_runtime_dir = Path(f"{conf_['rootdir']}/online_early_stage/training_process/credit={conf_['credit_assignment_type']}/runtime")
+            online_pg_runtime_dir = Path(f"{conf_['rootdir']}/online_early_stage/training_process/credit={conf_['credit_assignment_type']}{is_vanilla_flg_}/runtime")
             Path(online_pg_runtime_dir).mkdir(parents=True, exist_ok=True)
 
             runtime_logs = torch.zeros((conf["n_random_seed"]))
@@ -142,8 +145,9 @@ def process(
             torch.save(runtime_logs, f"{online_pg_runtime_dir}/{detailed_configs_}.pt")
 
     else:
+        is_vanilla_flg_ = "-SwR" if conf_['credit_assignment_type'] == "ALL" and conf_["is_vanilla_replacement"] else ""
         detailed_configs_ = f"n_candidate={conf_['n_candidate_action_train']},late_stage={conf_['late_stage_optimality']},n_model={conf_['n_moe_model']},n_output={conf_['n_output_action']}"
-        online_pg_runtime_dir = Path(f"{conf_['rootdir']}/online_early_stage/training_process/credit={conf_['credit_assignment_type']}/runtime")
+        online_pg_runtime_dir = Path(f"{conf_['rootdir']}/online_early_stage/training_process/credit={conf_['credit_assignment_type']}{is_vanilla_flg_}/runtime")
         Path(online_pg_runtime_dir).mkdir(parents=True, exist_ok=True)
 
         runtime_logs = torch.zeros((conf["n_random_seed"]))

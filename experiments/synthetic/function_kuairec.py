@@ -5,13 +5,13 @@ from typing import Dict, Optional, Tuple
 
 import torch
 
-from synthetic.dataset import (
+from src.dataset import (
     KuaiRecDataGenerator,
 )
-from synthetic.learner import (
+from src.learner import (
     KuaiRecOnlinePolicyLearner,
 )
-from synthetic.policy import (
+from src.policy import (
     BaseEarlyStagePolicy,
     BaseLateStagePolicy,
     BaselineEarlyStagePolicy,
