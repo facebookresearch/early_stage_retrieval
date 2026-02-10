@@ -5,16 +5,16 @@ from typing import Dict, Optional, Tuple, Union
 
 import torch
 
-from synthetic.dataset import (
+from src.dataset import (
     SyntheticDataGenerator,
     VectorialContextSampler,
     VectorialLatentSampler,
     VectorialRewardModel,
 )
-from synthetic.learner import (
+from src.learner import (
     OnlinePolicyLearner,
 )
-from synthetic.policy import (
+from src.policy import (
     BaseEarlyStagePolicy,
     BaseLateStagePolicy,
     BaselineEarlyStagePolicy,
@@ -183,6 +183,7 @@ def runtime_online_pg_policy(
     early_stage_policy: BaselineEarlyStagePolicy,
     early_stage_lr: float,
     credit_assignment_type: str,
+    is_vanilla_replacement: bool,
     n_epoch: int,
     n_steps_per_epoch: int,
     n_epochs_per_log: int,
@@ -209,6 +210,11 @@ def runtime_online_pg_policy(
         device=device,
         random_seed=random_seed,
     )
+
+    credit_assignment_type_ = credit_assignment_type
+    if credit_assignment_type == "ALL" and is_vanilla_replacement:
+        credit_assignment_type_ = "ALL-SwR"
+
     trained_online_pg_early_stage_policy = (
         online_pg_learner.train_early_stage_policy_online(
             n_epoch=n_epoch,
@@ -218,13 +224,14 @@ def runtime_online_pg_policy(
             make_copy=False,  #
             return_training_logs=False,
             credit_assignment_type=credit_assignment_type,  #
+            is_vanilla_replacement=is_vanilla_replacement,
             is_deterministic_early_stage_eval=True,
             is_deterministic_late_stage_eval=True,
             n_candidate_action_train=n_candidate_action_train,  #
             n_candidate_action_eval=n_candidate_action_eval,  #
             random_seed=random_seed,
             use_wandb=use_wandb,
-            experiment_name=f"Meta-ESR-{credit_assignment_type}-runtime",  # added prefix
+            experiment_name=f"Meta-ESR-{credit_assignment_type_}-runtime",  # added prefix
         )
     )
 
