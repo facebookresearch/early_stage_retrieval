@@ -117,3 +117,8 @@ The training processes witll be stored in the following location.
 ```bash
 ~/meta_early_stage_retrieval/experiments/synthetic/logs/online_early_stage/training_process/KuaiRec,credit={ALL/CA/TOP1}/{action_probs/policy_values/train_losses}/{detailed_configs}.pt
 ```
+
+
+## License
+
+This project is [CC-BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) licensed, as found in the LICENSE file.
