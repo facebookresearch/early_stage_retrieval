@@ -4,13 +4,14 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import wandb
 
 import torch
 
-from early_stage_retrieval.synthetic.dataset import (
+from synthetic.dataset import (
     BaseDataGenerator,
 )
-from early_stage_retrieval.synthetic.policy import (
+from synthetic.policy import (
     BaseEarlyStagePolicy,
     BaseLateStagePolicy,
 )
@@ -117,8 +118,10 @@ class OnlinePolicyLearner(BasePolicyLearner):
         position_weight: Optional[torch.Tensor], shape (n_output_action, )
             The position weight for the reward.
 
-        credit_assignment_type: str, default="full"
-            The credit assignment method. Either "full", "partial", or "none".
+        credit_assignment_type: str, default="CA"
+            The credit assignment method. Either "CA", "ALL", "TOP1", or "JOINT".
+            "CA" is the credit-assigned PG, "ALL" is the vanilla PG, and "TOP1" is the top-1 PG.
+            "JOINT" is the vanilla PG, where gradient is taken for the aggregated reward, not indidual reward for each output action.
 
         Output
         ------
@@ -126,8 +129,8 @@ class OnlinePolicyLearner(BasePolicyLearner):
             The policy gradient.
 
         """
-        if credit_assignment_type in ["full", "partial"]:
-            if credit_assignment_type == "full":
+        if credit_assignment_type != "JOINT":
+            if credit_assignment_type in ["CA", "TOP1"]:
                 policy_gradient = -early_stage_log_prob * reward
             else:
                 policy_gradient = -early_stage_log_prob.unsqueeze(1) * reward
@@ -145,7 +148,8 @@ class OnlinePolicyLearner(BasePolicyLearner):
     def train_early_stage_policy_online(
         self,
         position_weight: Optional[torch.Tensor] = None,
-        credit_assignment_type: str = "full",
+        credit_assignment_type: str = "CA",
+        is_vanilla_replacement: bool = False,
         val_ratio: float = 0.1,
         test_ratio: float = 0.1,
         n_candidate_action_train: int = 20,
@@ -162,6 +166,9 @@ class OnlinePolicyLearner(BasePolicyLearner):
         n_candidate_per_model_eval: Optional[List[int]] = None,
         save_path: Optional[Path] = None,
         random_seed: Optional[int] = None,
+        use_wandb: bool = False,
+        experiment_name: str = "online_pg",
+        run_id: str = "0",
     ):
         """Train the base model used in the early stage policy.
 
@@ -170,8 +177,13 @@ class OnlinePolicyLearner(BasePolicyLearner):
         position_weight: Optional[torch.Tensor], shape (n_output_action, )
             The position weight for the reward.
 
-        credit_assignment_type: str, default="full"
-            The credit assignment method. Either "full", "partial", or "none".
+        credit_assignment_type: str, default="CA"
+            The credit assignment method. Either "CA", "ALL", "TOP1", or "JOINT".
+            "CA" is the credit-assigned PG, "ALL" is the vanilla PG, and "TOP1" is the top-1 PG.
+            "JOINT" is the vanilla PG, where gradient is taken for the aggregated reward, not indidual reward for each output action.
+
+        is_vanilla_replacement: bool, default=False
+            Whether to use the vanilla policy gradient under sampling w/ replacement (SwR) approximation.
 
         val_ratio: float, default=0.1
             The ratio of validation data.
@@ -218,16 +230,30 @@ class OnlinePolicyLearner(BasePolicyLearner):
         random_seed: Optional[int]
             The random seed to use.
 
+        use_wandb: bool, default=False
+            Whether to use wandb to report the training statistics.
+
+        experiment_name: str, default="online_pg"
+            Experiment name (project) used for wandb reports.
+
         """
-        if credit_assignment_type not in ["full", "partial", "none"]:
+        if credit_assignment_type not in ["CA", "ALL", "TOP1", "JOINT"]:
             raise ValueError(
-                f"credit_assignment_type must be either 'full', 'partial', or 'none', but got {credit_assignment_type}."
+                f"credit_assignment_type must be either 'CA', 'ALL', 'TOP1', or 'JOINT', but got {credit_assignment_type}."
             )
 
         if random_seed is None:
             random_seed = self.random_seed
 
         self.seed(random_seed)  # pyre-ignore
+
+        if use_wandb:
+            wandb_run = wandb.init(
+                entity="", 
+                project=experiment_name, 
+                name=f"{random_seed}", 
+                reinit=True,
+            )
 
         if make_copy:
             early_stage_policy = deepcopy(self.early_stage_policy)
@@ -318,7 +344,9 @@ class OnlinePolicyLearner(BasePolicyLearner):
                             n_candidate_action=n_candidate_action_,
                             n_candidate_per_model=n_candidate_per_model_,
                             require_grad_model_id=require_grad_model_id_,
-                            is_credit_assigned=(credit_assignment_type == "full"),
+                            is_credit_assigned=(credit_assignment_type == "CA"),
+                            is_top1=(credit_assignment_type == "TOP1"),
+                            is_vanilla_replacement=(credit_assignment_type == "ALL") and is_vanilla_replacement,
                         )
                     )
 
@@ -364,6 +392,18 @@ class OnlinePolicyLearner(BasePolicyLearner):
                         n_candidate_per_model=n_candidate_per_model_eval,
                     )
                     policy_values[(i + 1) // n_epochs_per_log] += policy_value_.item()
+
+                if use_wandb:
+                    wandb.log(
+                        {
+                            "train_loss": train_losses[i + 1],
+                            "average_prob": action_probs[i + 1],
+                            "policy_value": policy_values[(i + 1) // n_epochs_per_log],
+                        }
+                    )
+
+        if use_wandb:
+            wandb_run.finish()
 
         self.trained_early_stage_policy = early_stage_policy  # pyre-ignore
 

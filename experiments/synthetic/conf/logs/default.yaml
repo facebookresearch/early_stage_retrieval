@@ -1,5 +1,3 @@
-bucket: ./
 rootdir: ./
-manifold_rootdir: tree/
 experiment_name: auto
-use_manifold: False
+use_wandb: True
